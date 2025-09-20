@@ -1,0 +1,6 @@
+# minimal
+numpy
+tqdm
+
+# optional (if you implement NN improvements)
+# torch
