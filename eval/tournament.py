@@ -1,4 +1,3 @@
-# eval/tournament.py
 import argparse
 from sim.perudo import PerudoSimulator
 from agents.random_agent import RandomAgent
@@ -20,7 +19,7 @@ def make_agent(name, sim, mc_n=200):
     return cls()
 
 
-def play_match(sim, agent_names, games=100, verbose=False, mc_n=200):
+def play_match(sim, agent_names, games=100, mc_n=200):
     results = Counter()
     for g in range(games):
         # instantiate agents
@@ -30,7 +29,7 @@ def play_match(sim, agent_names, games=100, verbose=False, mc_n=200):
             agent_name = agent_names[i % len(agent_names)]
             a = make_agent(agent_name, sim, mc_n=mc_n)
             agents.append(a)
-        winner, _ = sim.play_game(agents, verbose=verbose)
+        winner, _ = sim.play_game(agents)
         results[winner] += 1
         if (g + 1) % 10 == 0:
             print(f"Played {g+1}/{games}")
@@ -44,11 +43,10 @@ if __name__ == '__main__':
     parser.add_argument('--agent1', type=str, default='baseline')
     parser.add_argument('--agent2', type=str, default='mc')
     parser.add_argument('--mc-n', type=int, default=200)
-    parser.add_argument('--palifico', action='store_true')
+    parser.add_argument('--maputa', action='store_true')
     parser.add_argument('--exact', action='store_true')
-    parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
 
-    sim = PerudoSimulator(num_players=args.players, start_dice=5, ones_are_wild=True, use_palifico=args.palifico, use_exact=args.exact)
-    results = play_match(sim, [args.agent1, args.agent2], games=args.games, verbose=args.verbose, mc_n=args.mc_n)
+    sim = PerudoSimulator(num_players=args.players, start_dice=5, ones_are_wild=True, use_maputa=args.maputa, use_exact=args.exact)
+    results = play_match(sim, [args.agent1, args.agent2], games=args.games, mc_n=args.mc_n)
     print('Results (winner idx counts):', results)

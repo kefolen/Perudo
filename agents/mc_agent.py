@@ -1,4 +1,3 @@
-# agents/mc_agent.py
 import random
 from sim.perudo import Action
 from agents.baseline_agent import BaselineAgent
@@ -13,7 +12,7 @@ class MonteCarloAgent:
     def select_action(self, obs):
         sim = obs.get('_simulator')
         current_bid = obs['current_bid']
-        possible_actions = sim.legal_actions({'dice_counts': obs['dice_counts']}, current_bid, obs.get('palifico_restrict_face'))
+        possible_actions = sim.legal_actions({'dice_counts': obs['dice_counts']}, current_bid, obs.get('maputa_restrict_face'))
         if current_bid is None:
             possible_actions = [a for a in possible_actions if a[0] != 'call']
         best = None
@@ -54,8 +53,11 @@ class MonteCarloAgent:
         hands = [list(h) for h in full_hands]
         current_player = obs['player_idx']
         current_bid = obs['current_bid']
-        palifico_active = obs['palifico_active']
-        palifico_restrict_face = obs.get('palifico_restrict_face')
+        maputa_active = obs['maputa_active']
+        maputa_restrict_face = obs.get('maputa_restrict_face')
+        # Initialize last_bid_maker
+        last_bid_maker = None
+
         # apply first action
         if first_action[0] == 'bid':
             current_bid = (first_action[1], first_action[2])
@@ -63,23 +65,47 @@ class MonteCarloAgent:
         elif first_action[0] == 'call':
             if current_bid is None:
                 return 0.0
-            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (palifico_active and state['dice_counts'][current_player]==1)))
-            loser = current_player if true else (last_bid_maker if 'last_bid_maker' in locals() else sim.next_player_idx(current_player - 1, state['dice_counts']))
+            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][current_player]==1)))
+            loser = current_player if true else (last_bid_maker if last_bid_maker is not None else sim.next_player_idx(current_player - 1, state['dice_counts']))
             state['dice_counts'][loser] = max(0, state['dice_counts'][loser] - 1)
+            maputa_active = sim.use_maputa and (state['dice_counts'][loser] == 1)
+            maputa_restrict_face = None
+            current_bid = None
+            last_bid_maker = None
+            # regenerate hands
+            for i in range(sim.num_players):
+                if state['dice_counts'][i] > 0:
+                    hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
+                else:
+                    hands[i] = []
+            # update current player
+            current_player = loser
         elif first_action[0] == 'exact':
             if current_bid is None:
                 return 0.0
-            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (palifico_active and state['dice_counts'][current_player]==1)))
+            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][current_player]==1)))
             if cnt == current_bid[0]:
                 for i in range(sim.num_players):
                     if i != current_player and state['dice_counts'][i] > 0:
                         state['dice_counts'][i] = max(0, state['dice_counts'][i] - 1)
+                maputa_active = sim.use_maputa and (state['dice_counts'][current_player] == 1)
             else:
                 state['dice_counts'][current_player] = max(0, state['dice_counts'][current_player] - 1)
+                maputa_active = sim.use_maputa and (state['dice_counts'][current_player] == 1)
+            maputa_restrict_face = None
+            current_bid = None
+            last_bid_maker = None
+            # regenerate hands
+            for i in range(sim.num_players):
+                if state['dice_counts'][i] > 0:
+                    hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
+                else:
+                    hands[i] = []
+            # update current player
+            current_player = sim.next_player_idx(current_player, state['dice_counts'])
         # continue using baseline agents until game end (approximate)
         rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
         cur = sim.next_player_idx(current_player, state['dice_counts'])
-        last_bid_maker = locals().get('last_bid_maker', None)
         while sum(1 for c in state['dice_counts'] if c > 0) > 1:
             agent = rollout_agents[cur]
             obs_local = {
@@ -87,8 +113,8 @@ class MonteCarloAgent:
                 'my_hand': list(hands[cur]),
                 'dice_counts': list(state['dice_counts']),
                 'current_bid': current_bid,
-                'palifico_active': palifico_active,
-                'palifico_restrict_face': palifico_restrict_face,
+                'maputa_active': maputa_active,
+                'maputa_restrict_face': maputa_restrict_face,
                 '_simulator': sim
             }
             a = agent.select_action(obs_local)
@@ -96,24 +122,26 @@ class MonteCarloAgent:
                 if current_bid is None:
                     cur = sim.next_player_idx(cur, state['dice_counts'])
                     continue
-                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (palifico_active and state['dice_counts'][current_player]==1)))
+                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][cur]==1)))
                 loser = cur if true else (last_bid_maker if last_bid_maker is not None else sim.next_player_idx(cur - 1, state['dice_counts']))
                 state['dice_counts'][loser] = max(0, state['dice_counts'][loser] - 1)
                 # regenerate hands
                 for i in range(sim.num_players):
                     if state['dice_counts'][i] > 0:
-                        hands[i] = [random.randint(1,6) for _ in range(state['dice_counts'][i])]
+                        hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
                     else:
                         hands[i] = []
                 current_bid = None
                 last_bid_maker = None
+                maputa_active = sim.use_maputa and (state['dice_counts'][loser] == 1)
+                maputa_restrict_face = None
                 cur = loser
                 continue
             elif a[0] == 'exact':
                 if current_bid is None:
                     cur = sim.next_player_idx(cur, state['dice_counts'])
                     continue
-                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (palifico_active and state['dice_counts'][current_player]==1)))
+                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][cur]==1)))
                 if cnt == current_bid[0]:
                     for i in range(sim.num_players):
                         if i != cur and state['dice_counts'][i] > 0:
@@ -122,11 +150,13 @@ class MonteCarloAgent:
                     state['dice_counts'][cur] = max(0, state['dice_counts'][cur] - 1)
                 for i in range(sim.num_players):
                     if state['dice_counts'][i] > 0:
-                        hands[i] = [random.randint(1,6) for _ in range(state['dice_counts'][i])]
+                        hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
                     else:
                         hands[i] = []
                 current_bid = None
                 last_bid_maker = None
+                maputa_active = sim.use_maputa and (state['dice_counts'][cur] == 1)
+                maputa_restrict_face = None
                 cur = sim.next_player_idx(cur, state['dice_counts'])
                 continue
             elif a[0] == 'bid':

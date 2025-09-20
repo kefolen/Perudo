@@ -1,4 +1,3 @@
-# agents/baseline_agent.py
 from collections import Counter
 from sim.perudo import Action, binom_cdf_ge
 
@@ -21,7 +20,7 @@ class BaselineAgent:
         qty, face = current_bid
         k = sum(1 for d in my_hand if d == face)
         n_other = TD - len(my_hand)
-        if face != 1 and (sim.ones_are_wild and not (obs['palifico_active'] and obs['dice_counts'][obs['player_idx']]==1)):
+        if face != 1 and (sim.ones_are_wild and not (obs['maputa_active'] and obs['dice_counts'][obs['player_idx']]==1)):
             p = 1/3
         else:
             p = 1/6
