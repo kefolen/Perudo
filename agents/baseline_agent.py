@@ -1,5 +1,6 @@
 from collections import Counter
-from sim.perudo import Action, binom_cdf_ge
+from sim.perudo import Action, binom_cdf_ge_fast
+
 
 class BaselineAgent:
     def __init__(self, name='baseline', threshold_call=0.5):
@@ -20,17 +21,20 @@ class BaselineAgent:
         qty, face = current_bid
         k = sum(1 for d in my_hand if d == face)
         n_other = TD - len(my_hand)
-        if face != 1 and (sim.ones_are_wild and not (obs['maputa_active'] and obs['dice_counts'][obs['player_idx']]==1)):
-            p = 1/3
+        if face != 1 and (sim.ones_are_wild and not (sim.use_maputa and obs['dice_counts'][obs['player_idx']] == 1)):
+            p = 1 / 3
         else:
-            p = 1/6
+            p = 1 / 6
+
         need = max(0, qty - k)
-        P_true = binom_cdf_ge(n_other, need, p)
+        P_true = binom_cdf_ge_fast(n_other, need, p)
         if P_true < self.threshold_call:
             return Action.call()
         # minimal raise: increase qty by 1
         if qty + 1 <= TD:
             return Action.bid(qty + 1, face)
-        for f in range(face + 1, 7):
-            return Action.bid(qty, f)
+        if face == 1:
+            return Action.bid(2*qty+1, 1)
+        if face+1 <= 6:
+            return Action.bid(qty, face+1)
         return Action.call()

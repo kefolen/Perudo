@@ -1,168 +1,343 @@
 import random
-from sim.perudo import Action
+import math
+from sim.perudo import Action, binom_cdf_ge_fast
 from agents.baseline_agent import BaselineAgent
 
+
 class MonteCarloAgent:
-    def __init__(self, name='mc', n=200, rng=None):
+    """
+    Faster Monte-Carlo determinization agent with:
+      - chunked simulations
+      - precomputed binomial tails for p=1/6 and p=1/3
+      - early stopping (per-action) via max_rounds and optional early-terminate by margin
+      - minimal allocations in inner loop
+      - option: simulate only to end of current round and evaluate heuristic win-prob
+    """
+
+    def __init__(self, name='mc', n=200, rng=None,
+                 chunk_size=8, max_rounds=6, simulate_to_round_end=True,
+                 early_stop_margin=0.1):
         self.name = name
-        self.N = n
+        self.N = max(1, int(n))
         self.rng = rng or random.Random()
+        self.chunk_size = max(1, int(chunk_size))
+        self.max_rounds = int(max_rounds)  # cap rounds per simulation
+        self.simulate_to_round_end = bool(simulate_to_round_end)
         self.rollout_policy_cls = BaselineAgent
+        self._rollout_agents = None
+        # early_stop_margin: if an action is behind current best by > margin (estimate), stop evaluating it
+        self.early_stop_margin = float(early_stop_margin)
 
-    def select_action(self, obs):
-        sim = obs.get('_simulator')
-        current_bid = obs['current_bid']
-        possible_actions = sim.legal_actions({'dice_counts': obs['dice_counts']}, current_bid, obs.get('maputa_restrict_face'))
-        if current_bid is None:
-            possible_actions = [a for a in possible_actions if a[0] != 'call']
-        best = None
-        best_val = -1e9
-        for a in possible_actions:
-            val = self.evaluate_action(obs, a)
-            if val > best_val:
-                best_val = val
-                best = a
-        return best
-
+    # sample determinization (fast)
     def sample_determinization(self, obs):
-        sim = obs.get('_simulator')
+        sim = obs['_simulator']
         DC = obs['dice_counts']
         my_idx = obs['player_idx']
+        # reuse rng locally
+        randint = self.rng.randint
         hands = [None] * sim.num_players
-        hands[my_idx] = list(obs['my_hand'])
+        hands[my_idx] = obs['my_hand']  # pass existing list (do NOT copy)
         for i in range(sim.num_players):
             if i == my_idx:
                 continue
             if DC[i] <= 0:
                 hands[i] = []
             else:
-                hands[i] = [self.rng.randint(1, 6) for _ in range(DC[i])]
+                # faster generation: use list comprehension with local randint
+                hands[i] = [randint(1, 6) for _ in range(DC[i])]
         return hands
 
-    def evaluate_action(self, obs, action):
+    # simple heuristic value: given dice counts, approximate win probability
+    # logistic based on relative dice counts
+    @staticmethod
+    def heuristic_win_prob(dice_counts, player_idx):
+        total = sum(dice_counts)
+        if total <= 0:
+            return 0.0
+        my = dice_counts[player_idx]
+        # baseline: probability proportional to dice count normalized
+        # add small exponent to favor larger counts
+        denom = sum((c ** 1.2) for c in dice_counts if c > 0)
+        if denom <= 0:
+            return 0.0
+        return (my ** 1.2) / denom
+
+    def evaluate_action(self, obs, action, best_so_far=None):
+        """Evaluate `action` by running self.N simulations in chunks.
+           best_so_far: mean of current best action (optional) for early stopping.
+        """
+        # get legal actions count to scale sims if needed (already done outside if desired)
+        sims = self.N
+        chunk = self.chunk_size
+        full_chunks = sims // chunk
+        rem = sims % chunk
+
         total = 0.0
-        for _ in range(self.N):
+        total_sq = 0.0  # for variance if needed
+        runs_done = 0
+
+        # localize frequently used objects to speed up loop
+        sim = obs['_simulator']
+        player_idx = obs['player_idx']
+
+        # early stop thresholds derived from best_so_far
+        early_margin = self.early_stop_margin
+        best_mean = None
+        if best_so_far is not None:
+            best_mean = best_so_far
+
+        def run_one_sim():
             hands = self.sample_determinization(obs)
-            r = self.simulate_from_determinization(hands, obs, action)
+            return self.simulate_from_determinization(hands, obs, action)
+
+        # run full chunks
+        for _ in range(full_chunks):
+            # chunked loop (reduce overhead)
+            for _c in range(chunk):
+                r = run_one_sim()
+                total += r
+                total_sq += r * r
+                runs_done += 1
+            # after each chunk check early stop (if provided)
+            if best_mean is not None and runs_done > 8:
+                mean = total / runs_done
+                # simple early check: if mean + margin < best_mean -> stop
+                if mean + early_margin < best_mean:
+                    break
+
+        # remainder
+        for _ in range(rem):
+            r = run_one_sim()
             total += r
-        return total / max(1, self.N)
+            total_sq += r * r
+            runs_done += 1
+            if best_mean is not None and runs_done > 8:
+                mean = total / runs_done
+                if mean + early_margin < best_mean:
+                    break
+
+        if runs_done == 0:
+            return 0.0
+        return total / runs_done
+
+    def select_action(self, obs, prune_k=12):
+        """Top-level selection: optionally prune candidate actions (by simple prior),
+           then evaluate each action and pick best. prune_k=number of bids to keep (not counting call/exact).
+        """
+        sim = obs['_simulator']
+        current_bid = obs['current_bid']
+        cand = sim.legal_actions({'dice_counts': obs['dice_counts']}, current_bid, obs.get('maputa_restrict_face'))
+        if current_bid is None:
+            cand = [a for a in cand if a[0] != 'call']
+
+        # Fast prior: compute binomial plausibility for each bid and sort
+        bids = []
+        others = []
+        TD = sum(obs['dice_counts'])
+        for a in cand:
+            if a[0] == 'bid':
+                qty, face = a[1], a[2]
+                # compute quick prior P(at least qty) using fast binom lookup
+                # approximate k = my_count for face
+                my_hand = obs['my_hand']
+                k = sum(1 for d in my_hand if d == face)
+                n_other = TD - len(my_hand)
+                if face != 1 and obs.get('maputa_active', False) is False and sim.ones_are_wild:
+                    p = 1 / 3
+                else:
+                    p = 1 / 6
+                need = max(0, qty - k)
+                prior = binom_cdf_ge_fast(n_other, need, p) if n_other >= 0 else 0.0
+                bids.append((prior, a))
+            else:
+                others.append((1.0, a))
+        # keep top-k bids by prior
+        bids.sort(reverse=True, key=lambda x: x[0])
+        kept_bids = [b for (_, b) in bids[:prune_k]]
+        cand_pruned = kept_bids + [a for (_, a) in others]
+
+        # evaluate actions; use best mean as early-stop reference
+        best_action = None
+        best_val = -1.0
+
+        # ensure rollout agents cached
+        if self._rollout_agents is None or len(self._rollout_agents) != sim.num_players:
+            self._rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
+
+        for a in cand_pruned:
+            val = self.evaluate_action(obs, a, best_so_far=best_val)
+            if val > best_val:
+                best_val = val
+                best_action = a
+
+        # fallback
+        return best_action if best_action is not None else random.choice(cand_pruned)
 
     def simulate_from_determinization(self, full_hands, obs, first_action):
-        sim = obs.get('_simulator')
-        state = {'dice_counts': list(obs['dice_counts'])}
+        """
+        Optimized simulate:
+          - local variables for performance
+          - cap rounds by self.max_rounds (guarantees termination)
+          - option: if simulate_to_round_end True then do only current round and return heuristic thereafter
+        """
+        sim = obs['_simulator']
+        # shallow copies only where needed
+        dice_counts = list(obs['dice_counts'])
         hands = [list(h) for h in full_hands]
-        current_player = obs['player_idx']
+        cur = obs['player_idx']
         current_bid = obs['current_bid']
-        maputa_active = obs['maputa_active']
-        maputa_restrict_face = obs.get('maputa_restrict_face')
-        # Initialize last_bid_maker
-        last_bid_maker = None
+        maputa_active = obs.get('maputa_active', False)
+        maputa_restrict_face = obs.get('maputa_restrict_face', None)
+        player_idx = obs['player_idx']
 
-        # apply first action
+        # compute alive_count and maintain it
+        alive_count = sum(1 for c in dice_counts if c > 0)
+
+        # helper locals
+        nxt = sim.next_player_idx
+        is_bid_true = sim.is_bid_true
+        ones_are_wild = sim.ones_are_wild
+        randint = self.rng.randint
+
+        # set current_bid_maker (approx: previous player if there was a bid)
+        current_bid_maker = None
+        if current_bid is not None:
+            # assume previous alive player was last bidder
+            # find previous alive
+            n = len(dice_counts)
+            for off in range(1, n + 1):
+                idx = (cur - off) % n
+                if dice_counts[idx] > 0:
+                    current_bid_maker = idx
+                    break
+
+        # apply first_action
+        first_bid_by = None
         if first_action[0] == 'bid':
+            first_bid_by = cur
+            if maputa_active:
+                maputa_restrict_face = first_action[2]
             current_bid = (first_action[1], first_action[2])
-            last_bid_maker = current_player
-        elif first_action[0] == 'call':
-            if current_bid is None:
-                return 0.0
-            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][current_player]==1)))
-            loser = current_player if true else (last_bid_maker if last_bid_maker is not None else sim.next_player_idx(current_player - 1, state['dice_counts']))
-            state['dice_counts'][loser] = max(0, state['dice_counts'][loser] - 1)
-            maputa_active = sim.use_maputa and (state['dice_counts'][loser] == 1)
-            maputa_restrict_face = None
-            current_bid = None
-            last_bid_maker = None
-            # regenerate hands
-            for i in range(sim.num_players):
-                if state['dice_counts'][i] > 0:
-                    hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
+            current_bid_maker = cur
+            cur = nxt(cur, dice_counts)
+        else:
+            if first_action[0] == 'call':
+                if current_bid is None:
+                    return 0.0
+                bid_true, cnt = is_bid_true(hands, current_bid, ones_are_wild=(ones_are_wild and not maputa_active))
+                loser = cur if bid_true else current_bid_maker
+            else:  # exact
+                if current_bid is None:
+                    return 0.0
+                bid_true, cnt = is_bid_true(hands, current_bid, ones_are_wild=(ones_are_wild and not maputa_active))
+                if cnt == current_bid[0]:
+                    dice_counts[cur] += 1
+                    loser = current_bid_maker
+                else:
+
+                    loser = cur
+
+            dice_counts[loser] = max(0, dice_counts[loser] - 1)
+            if dice_counts[loser] == 0:
+                alive_count -= 1
+            # reset round quickly (regenerate hands for alive players)
+            for i in range(len(dice_counts)):
+                if dice_counts[i] > 0:
+                    hands[i] = [randint(1, 6) for _ in range(dice_counts[i])]
                 else:
                     hands[i] = []
-            # update current player
-            current_player = loser
-        elif first_action[0] == 'exact':
-            if current_bid is None:
-                return 0.0
-            true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][current_player]==1)))
-            if cnt == current_bid[0]:
-                for i in range(sim.num_players):
-                    if i != current_player and state['dice_counts'][i] > 0:
-                        state['dice_counts'][i] = max(0, state['dice_counts'][i] - 1)
-                maputa_active = sim.use_maputa and (state['dice_counts'][current_player] == 1)
-            else:
-                state['dice_counts'][current_player] = max(0, state['dice_counts'][current_player] - 1)
-                maputa_active = sim.use_maputa and (state['dice_counts'][current_player] == 1)
-            maputa_restrict_face = None
             current_bid = None
-            last_bid_maker = None
-            # regenerate hands
-            for i in range(sim.num_players):
-                if state['dice_counts'][i] > 0:
-                    hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
-                else:
-                    hands[i] = []
-            # update current player
-            current_player = sim.next_player_idx(current_player, state['dice_counts'])
-        # continue using baseline agents until game end (approximate)
-        rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
-        cur = sim.next_player_idx(current_player, state['dice_counts'])
-        while sum(1 for c in state['dice_counts'] if c > 0) > 1:
-            agent = rollout_agents[cur]
+            current_bid_maker = None
+            maputa_restrict_face = None
+            maputa_active = sim.use_maputa and (dice_counts[loser] == 1)
+            cur = loser
+
+        # If simulate_to_round_end: do only to end of current round then return heuristic estimate
+        rounds = 0
+        while alive_count > 1 and rounds < self.max_rounds:
+            rounds += 1
+            # pick rollout agent for cur (they use obs only)
+            # build minimal obs_local (reuse frequently)
+            # Note: baseline agent expects lists; do not copy hands[cur] if agent doesn't mutate
             obs_local = {
                 'player_idx': cur,
-                'my_hand': list(hands[cur]),
-                'dice_counts': list(state['dice_counts']),
+                'my_hand': hands[cur],
+                'dice_counts': dice_counts,
                 'current_bid': current_bid,
                 'maputa_active': maputa_active,
                 'maputa_restrict_face': maputa_restrict_face,
                 '_simulator': sim
             }
-            a = agent.select_action(obs_local)
-            if a[0] == 'call':
-                if current_bid is None:
-                    cur = sim.next_player_idx(cur, state['dice_counts'])
-                    continue
-                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][cur]==1)))
-                loser = cur if true else (last_bid_maker if last_bid_maker is not None else sim.next_player_idx(cur - 1, state['dice_counts']))
-                state['dice_counts'][loser] = max(0, state['dice_counts'][loser] - 1)
-                # regenerate hands
-                for i in range(sim.num_players):
-                    if state['dice_counts'][i] > 0:
-                        hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
-                    else:
-                        hands[i] = []
-                current_bid = None
-                last_bid_maker = None
-                maputa_active = sim.use_maputa and (state['dice_counts'][loser] == 1)
-                maputa_restrict_face = None
-                cur = loser
-                continue
-            elif a[0] == 'exact':
-                if current_bid is None:
-                    cur = sim.next_player_idx(cur, state['dice_counts'])
-                    continue
-                true, cnt = sim.is_bid_true(hands, current_bid, ones_are_wild=(sim.ones_are_wild and not (maputa_active and state['dice_counts'][cur]==1)))
-                if cnt == current_bid[0]:
-                    for i in range(sim.num_players):
-                        if i != cur and state['dice_counts'][i] > 0:
-                            state['dice_counts'][i] = max(0, state['dice_counts'][i] - 1)
+            a = self._rollout_agents[cur].select_action(obs_local)
+
+            # handle action
+            if Action.is_bid(a):
+                if maputa_restrict_face is not None and a[2] != maputa_restrict_face:
+                    # invalid -> loser is cur
+                    loser = cur
+
                 else:
-                    state['dice_counts'][cur] = max(0, state['dice_counts'][cur] - 1)
-                for i in range(sim.num_players):
-                    if state['dice_counts'][i] > 0:
-                        hands[i] = [self.rng.randint(1,6) for _ in range(state['dice_counts'][i])]
+                    current_bid = (a[1], a[2])
+                    current_bid_maker = cur
+                    if first_bid_by is None:
+                        first_bid_by = cur
+                        if maputa_active:
+                            maputa_restrict_face = a[2]
+                    cur = nxt(cur, dice_counts)
+                    continue
+            elif a[0] == 'call':
+                if current_bid is None:
+                    # invalid call => penalize caller
+                    loser = cur
+
+                else:
+                    bid_true, cnt = is_bid_true(hands, current_bid,
+                                                ones_are_wild=(ones_are_wild and not maputa_active))
+                    loser = cur if bid_true else current_bid_maker
+            else:  # exact
+                if current_bid is None:
+                    loser = cur
+                else:
+                    bid_true, cnt = is_bid_true(hands, current_bid,
+                                                ones_are_wild=(ones_are_wild and not maputa_active))
+                    if cnt == current_bid[0]:
+                        dice_counts[cur] += 1
+                        loser = current_bid_maker
                     else:
-                        hands[i] = []
-                current_bid = None
-                last_bid_maker = None
-                maputa_active = sim.use_maputa and (state['dice_counts'][cur] == 1)
-                maputa_restrict_face = None
-                cur = sim.next_player_idx(cur, state['dice_counts'])
-                continue
-            elif a[0] == 'bid':
-                current_bid = (a[1], a[2])
-                last_bid_maker = cur
-            cur = sim.next_player_idx(cur, state['dice_counts'])
-        alive = [i for i, c in enumerate(state['dice_counts']) if c > 0]
-        winner = alive[0] if len(alive) >= 1 else None
-        return 1.0 if winner == obs['player_idx'] else 0.0
+                        loser = cur
+
+
+            dice_counts[loser] = max(0, dice_counts[loser] - 1)
+            if dice_counts[loser] == 0:
+                alive_count -= 1
+            # reset round quickly (regenerate hands for alive players)
+            for i in range(len(dice_counts)):
+                if dice_counts[i] > 0:
+                    hands[i] = [randint(1, 6) for _ in range(dice_counts[i])]
+                else:
+                    hands[i] = []
+            current_bid = None
+            current_bid_maker = None
+            maputa_restrict_face = None
+            maputa_active = sim.use_maputa and (dice_counts[loser] == 1)
+            cur = loser
+
+        # after loop: if we ran out of rounds -> return heuristic estimate
+        if alive_count <= 0:
+            return 0.0
+        if alive_count == 1:
+            # determine winner
+            winner = None
+            for i, c in enumerate(dice_counts):
+                if c > 0:
+                    winner = i
+                    break
+            return 1.0 if winner == player_idx else 0.0
+
+        # alive_count > 1 but rounds capped
+        if self.simulate_to_round_end:
+            # return a heuristic estimate of win probability (cheap)
+            return self.heuristic_win_prob(dice_counts, player_idx)
+        else:
+            # if not using heuristic, continue sim (but we capped rounds already) => fallback
+            return self.heuristic_win_prob(dice_counts, player_idx)

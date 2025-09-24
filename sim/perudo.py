@@ -9,10 +9,68 @@ def comb(n, k):
     return math.comb(n, k) if 0 <= k <= n else 0
 
 
-@lru_cache(maxsize=1024)
-def binom_cdf_ge(n, k, p):
+_BINOM_TAILS = {}  # e.g. { 1/6: [ None, [tail for n=1], [tail for n=2], ... ], 1/3: ... }
+
+
+def _build_table_for_p(p, max_n):
+    """Build table for single p up to n=max_n (inclusive)."""
+    tables = [None] * (max_n + 1)
+    for n in range(max_n + 1):
+        # compute pmf then tail (reverse cumulative)
+        # pmf length = n+1
+        pmf = [0.0] * (n + 1)
+        for k in range(n + 1):
+            pmf[k] = math.comb(n, k) * (p ** k) * ((1 - p) ** (n - k))
+        tail = [0.0] * (n + 1)
+        s = 0.0
+        for k in range(n, -1, -1):
+            s += pmf[k]
+            tail[k] = s
+        tables[n] = tail
+    return tables
+
+
+def precompute_binom_tails(max_n=60, ps=(1 / 6, 1 / 3)):
+    """
+    Precompute binomial tail tables for p values in `ps` up to n = max_n.
+    - max_n: maximum number of Bernoulli trials to support (typical Perudo: <= 40)
+    - ps: iterable of p values to precompute (defaults to 1/6 and 1/3)
+
+    After calling this, use binom_cdf_ge_fast(n,k,p) for O(1) lookup.
+    """
+    global _BINOM_TAILS
+    for p in ps:
+        # normalize float key for robustness (use exact fractional values where possible)
+        key = float(p)
+        # if already have table but it's smaller, expand
+        if key in _BINOM_TAILS and len(_BINOM_TAILS[key]) - 1 >= max_n:
+            continue
+        _BINOM_TAILS[key] = _build_table_for_p(key, max_n)
+    return _BINOM_TAILS
+
+precompute_binom_tails(max_n=50, ps=(1/6, 1/3))
+
+
+def binom_cdf_ge_fast(n, k, p):
+    """
+    Fast lookup of P(X >= k) for X ~ Binomial(n, p).
+    - If we have precomputed table for this p and n, returns table value.
+    - Otherwise falls back to direct sum (slower).
+    """
+    # canonicalize p key for lookup
+    p_key = float(p)
+    if p_key in _BINOM_TAILS:
+        table = _BINOM_TAILS[p_key]
+        if 0 <= n < len(table):
+            kk = max(0, min(k, n))
+            return table[n][kk]
+    # fallback: direct computation (slower). We keep original comb cached.
+    if n < 0:
+        return 0.0
     s = 0.0
-    for j in range(k, n + 1):
+    # ensure k within bounds
+    k0 = max(0, min(k, n))
+    for j in range(k0, n + 1):
         s += comb(n, j) * (p ** j) * ((1 - p) ** (n - j))
     return s
 
