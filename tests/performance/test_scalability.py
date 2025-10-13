@@ -169,11 +169,11 @@ class TestScalability:
         time_variance = max_time - min_time
 
         # Handle edge case where execution times are very small
-        if avg_execution_time > 0.001:  # Only check variance if avg time is meaningful
+        if avg_execution_time > 0.01:  # Only check variance if avg time is meaningful (10ms threshold)
             assert time_variance < avg_execution_time, f"Execution time variance should be reasonable (variance: {time_variance:.2f}s, avg: {avg_execution_time:.2f}s)"
         else:
             # For very fast operations, just ensure variance is reasonable in absolute terms
-            assert time_variance < 1.0, f"Execution time variance should be reasonable for fast operations (variance: {time_variance:.2f}s)"
+            assert time_variance < 0.1, f"Execution time variance should be reasonable for fast operations (variance: {time_variance:.4f}s)"
 
         print(f"Resource usage over time:")
         print(f"  Rounds: {num_rounds}")
