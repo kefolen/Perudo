@@ -5,7 +5,7 @@ This module runs all tests when executed. Designed to be launched directly
 from PyCharm or command line without any arguments.
 
 Usage:
-    python tests/test_launcher.py
+    python tests/tests_launcher.py
 """
 
 import sys

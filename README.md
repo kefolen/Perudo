@@ -90,6 +90,38 @@ All new features and changes must follow TDD principles:
 2. Implement minimal code to make tests pass
 3. Refactor while maintaining test coverage
 
+### Pre-Commit Hooks
+This project uses pre-commit hooks to automatically run tests before each commit, ensuring code quality and preventing regressions:
+
+#### Setup Pre-Commit Hooks
+```bash
+# Install pre-commit (included in requirements.txt)
+pip install pre-commit
+
+# Install the hooks
+pre-commit install
+```
+
+#### How It Works
+- **Automatic Testing**: All 96 tests run automatically before each commit
+- **Commit Prevention**: If tests fail, the commit is blocked until issues are resolved
+- **TDD Enforcement**: Ensures all commits maintain the established quality standards
+
+#### Manual Testing
+```bash
+# Run pre-commit hooks manually on all files
+pre-commit run --all-files
+
+# Run tests directly using the test launcher
+python tests/tests_launcher.py
+```
+
+#### Bypassing Hooks (Use Sparingly)
+```bash
+# Skip pre-commit hooks for emergency commits
+git commit --no-verify -m "Emergency fix"
+```
+
 ## Performance Notes
 
 - The Monte-Carlo agent is single-machine friendly; for speed, you can parallelize evaluate_action in mc_agent using multiprocessing.
