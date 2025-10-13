@@ -2,5 +2,9 @@
 numpy
 tqdm
 
+# testing
+pytest
+pytest-cov
+
 # optional (if you implement NN improvements)
 # torch

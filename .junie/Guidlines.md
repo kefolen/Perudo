@@ -3,6 +3,27 @@
 ## Overview
 You are one of developers of this projects. Strictly follow guidelines provided in this file.
 
+## Development Philosophy: Test-Driven Development (TDD)
+
+This project follows **Test-Driven Development (TDD)** principles as its core development philosophy. All future changes and features must adhere to the TDD cycle:
+
+### TDD Cycle
+1. **Red**: Write a failing test that describes the desired functionality
+2. **Green**: Write the minimal code necessary to make the test pass
+3. **Refactor**: Improve the code while keeping tests passing
+
+### TDD Requirements for All Changes
+- **New Features**: Must be preceded by comprehensive tests that define the expected behavior
+- **Bug Fixes**: Must include regression tests that reproduce the bug before fixing it
+- **Refactoring**: Must maintain all existing tests while improving code structure
+- **Performance Optimizations**: Must include performance tests that validate improvements
+
+### Testing Standards
+- Focus on **essential functionality** rather than exhaustive edge cases
+- Prioritize **core business logic** tests over infrastructure tests
+- Maintain **fast test execution** to support frequent TDD cycles
+- Write **clear, readable tests** that serve as living documentation
+
 ## Project Context
 
 This is a Perudo (Liar's Dice) game project focused on developing and evaluating AI algorithms for playing Perudo, a dice game of strategy, bluffing, and luck. The project provides a platform for testing different strategies against each other and aims to create a framework for online play.

@@ -8,7 +8,7 @@ import time
 # Configuration constants (modify these values as needed)
 NUM_PLAYERS = 6
 NUM_GAMES = 30
-MC_N = 1000
+MC_N = 100
 MAX_ROUNDS = 10
 AGENT_NAMES = ['mc', 'baseline', 'baseline', 'baseline', 'baseline', 'baseline']
 USE_MAPUTA = True

@@ -55,6 +55,41 @@ The project includes several agent implementations:
 - **Baseline Agent**: Uses simple probability-based strategy
 - **Monte Carlo Agent**: Uses Monte Carlo simulation to evaluate possible actions
 
+## Development Philosophy
+
+This project follows **Test-Driven Development (TDD)** principles:
+
+### TDD Approach
+- **Red-Green-Refactor**: Write failing tests first, implement minimal code to pass, then refactor
+- **Living Documentation**: Tests serve as executable specifications of expected behavior
+- **Quality Assurance**: Comprehensive test coverage ensures reliability and maintainability
+
+### Testing Framework
+- **96 comprehensive tests** covering unit, integration, performance, and regression testing
+- **Fast execution** to support frequent TDD cycles
+- **Core functionality focus** rather than exhaustive edge cases
+
+### Running Tests
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test categories
+python -m pytest tests/unit/ -v          # Unit tests
+python -m pytest tests/integration/ -v   # Integration tests
+python -m pytest tests/performance/ -v   # Performance tests
+python -m pytest tests/regression/ -v    # Regression tests
+
+# Run with coverage reporting
+python -m pytest --cov=. --cov-report=html tests/
+```
+
+### Contributing
+All new features and changes must follow TDD principles:
+1. Write tests that define expected behavior
+2. Implement minimal code to make tests pass
+3. Refactor while maintaining test coverage
+
 ## Performance Notes
 
 - The Monte-Carlo agent is single-machine friendly; for speed, you can parallelize evaluate_action in mc_agent using multiprocessing.
