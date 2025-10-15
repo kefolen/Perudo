@@ -1,22 +1,40 @@
 import random
 import math
+import multiprocessing as mp
 from sim.perudo import Action, binom_cdf_ge_fast
 from agents.baseline_agent import BaselineAgent
+from agents.mc_utils import (
+    sample_weighted_dice, compute_enhanced_action_score,
+    compute_control_variate_baseline, apply_variance_reduction,
+    heuristic_win_prob
+)
+from agents.mc_parallel import ParallelProcessingMixin, worker_run_chunk
 
 
-class MonteCarloAgent:
+def _worker_run_chunk(agent, obs, action, chunk_size, seed_offset):
+    """Module-level worker function for parallel chunk processing (backward compatibility)."""
+    return worker_run_chunk(agent, obs, action, chunk_size, seed_offset)
+
+
+class MonteCarloAgent(ParallelProcessingMixin):
     """
     Faster Monte-Carlo determinization agent with:
       - chunked simulations
       - precomputed binomial tails for p=1/6 and p=1/3
       - early stopping (per-action) via max_rounds and optional early-terminate by margin
       - minimal allocations in inner loop
-      - option: simulate only to end of current round and evaluate heuristic win-prob
+      - option: simulate only to the end of current round and evaluate heuristic win-prob
+      - weighted determinization sampling based on bidding history (Phase 1)
+      - parallel processing support with configurable worker pools (Phase 2)
+      - enhanced action pruning with opponent modeling (Phase 3)
+      - variance reduction techniques using control variates (Phase 3)
     """
 
     def __init__(self, name='mc', n=200, rng=None,
                  chunk_size=8, max_rounds=6, simulate_to_round_end=True,
-                 early_stop_margin=0.1):
+                 early_stop_margin=0.1, weighted_sampling=False,
+                 enable_parallel=False, num_workers=None, enhanced_pruning=False,
+                 variance_reduction=False):
         self.name = name
         self.N = max(1, int(n))
         self.rng = rng or random.Random()
@@ -27,6 +45,16 @@ class MonteCarloAgent:
         self._rollout_agents = None
         # early_stop_margin: if an action is behind current best by > margin (estimate), stop evaluating it
         self.early_stop_margin = float(early_stop_margin)
+        self.weighted_sampling = bool(weighted_sampling)
+        self.enhanced_pruning = bool(enhanced_pruning)
+        self.variance_reduction = bool(variance_reduction)
+        
+        # Initialize parallel processing parameters using mixin
+        self._initialize_parallel_parameters(enable_parallel, num_workers)
+
+    def __del__(self):
+        """Cleanup worker pool when agent is destroyed."""
+        self._close_worker_pool()
 
     # sample determinization (fast)
     def sample_determinization(self, obs):
@@ -37,35 +65,41 @@ class MonteCarloAgent:
         randint = self.rng.randint
         hands = [None] * sim.num_players
         hands[my_idx] = obs['my_hand']  # pass existing list (do NOT copy)
+        
         for i in range(sim.num_players):
             if i == my_idx:
                 continue
             if DC[i] <= 0:
                 hands[i] = []
             else:
-                # faster generation: use list comprehension with local randint
-                hands[i] = [randint(1, 6) for _ in range(DC[i])]
+                if self.weighted_sampling:
+                    hands[i] = sample_weighted_dice(self, obs, DC[i])
+                else:
+                    # faster generation: use list comprehension with local randint
+                    hands[i] = [randint(1, 6) for _ in range(DC[i])]
         return hands
 
-    # simple heuristic value: given dice counts, approximate win probability
-    # logistic based on relative dice counts
-    @staticmethod
-    def heuristic_win_prob(dice_counts, player_idx):
-        total = sum(dice_counts)
-        if total <= 0:
-            return 0.0
-        my = dice_counts[player_idx]
-        # baseline: probability proportional to dice count normalized
-        # add small exponent to favor larger counts
-        denom = sum((c ** 1.2) for c in dice_counts if c > 0)
-        if denom <= 0:
-            return 0.0
-        return (my ** 1.2) / denom
+
+
+
+
 
     def evaluate_action(self, obs, action, best_so_far=None):
         """Evaluate `action` by running self.N simulations in chunks.
            best_so_far: mean of current best action (optional) for early stopping.
         """
+        # Ensure rollout agents are initialized
+        sim = obs['_simulator']
+        if self._rollout_agents is None or len(self._rollout_agents) != sim.num_players:
+            self._rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
+        
+        if self.enable_parallel and self.num_workers > 1:
+            return self._evaluate_action_parallel(obs, action, best_so_far)
+        else:
+            return self._evaluate_action_sequential(obs, action, best_so_far)
+
+    def _evaluate_action_sequential(self, obs, action, best_so_far=None):
+        """Sequential evaluation (original implementation)."""
         # get legal actions count to scale sims if needed (already done outside if desired)
         sims = self.N
         chunk = self.chunk_size
@@ -75,6 +109,9 @@ class MonteCarloAgent:
         total = 0.0
         total_sq = 0.0  # for variance if needed
         runs_done = 0
+        
+        # For variance reduction, collect individual results
+        simulation_results = [] if self.variance_reduction else None
 
         # localize frequently used objects to speed up loop
         sim = obs['_simulator']
@@ -98,6 +135,11 @@ class MonteCarloAgent:
                 total += r
                 total_sq += r * r
                 runs_done += 1
+                
+                # Store result for variance reduction if enabled
+                if simulation_results is not None:
+                    simulation_results.append(r)
+                    
             # after each chunk check early stop (if provided)
             if best_mean is not None and runs_done > 8:
                 mean = total / runs_done
@@ -111,6 +153,11 @@ class MonteCarloAgent:
             total += r
             total_sq += r * r
             runs_done += 1
+            
+            # Store result for variance reduction if enabled
+            if simulation_results is not None:
+                simulation_results.append(r)
+                
             if best_mean is not None and runs_done > 8:
                 mean = total / runs_done
                 if mean + early_margin < best_mean:
@@ -118,7 +165,13 @@ class MonteCarloAgent:
 
         if runs_done == 0:
             return 0.0
-        return total / runs_done
+            
+        # Apply variance reduction if enabled
+        if self.variance_reduction and simulation_results:
+            return apply_variance_reduction(simulation_results, obs, action)
+        else:
+            return total / runs_done
+
 
     def select_action(self, obs, prune_k=12):
         """Top-level selection: optionally prune candidate actions (by simple prior),
@@ -148,10 +201,17 @@ class MonteCarloAgent:
                     p = 1 / 6
                 need = max(0, qty - k)
                 prior = binom_cdf_ge_fast(n_other, need, p) if n_other >= 0 else 0.0
-                bids.append((prior, a))
+                
+                # Use enhanced scoring if enabled
+                if self.enhanced_pruning:
+                    score = compute_enhanced_action_score(obs, a, prior)
+                else:
+                    score = prior
+                
+                bids.append((score, a))
             else:
                 others.append((1.0, a))
-        # keep top-k bids by prior
+        # keep top-k bids by score (enhanced or standard prior)
         bids.sort(reverse=True, key=lambda x: x[0])
         kept_bids = [b for (_, b) in bids[:prune_k]]
         cand_pruned = kept_bids + [a for (_, a) in others]
@@ -306,7 +366,6 @@ class MonteCarloAgent:
                     else:
                         loser = cur
 
-
             dice_counts[loser] = max(0, dice_counts[loser] - 1)
             if dice_counts[loser] == 0:
                 alive_count -= 1
@@ -337,7 +396,7 @@ class MonteCarloAgent:
         # alive_count > 1 but rounds capped
         if self.simulate_to_round_end:
             # return a heuristic estimate of win probability (cheap)
-            return self.heuristic_win_prob(dice_counts, player_idx)
+            return heuristic_win_prob(dice_counts, player_idx)
         else:
             # if not using heuristic, continue sim (but we capped rounds already) => fallback
-            return self.heuristic_win_prob(dice_counts, player_idx)
+            return heuristic_win_prob(dice_counts, player_idx)

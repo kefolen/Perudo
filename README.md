@@ -50,10 +50,67 @@ The primary focus is on developing a Monte Carlo-based agent that can make intel
 
 ## Agent Types
 
-The project includes several agent implementations:
-- **Random Agent**: Makes random legal moves
-- **Baseline Agent**: Uses simple probability-based strategy
-- **Monte Carlo Agent**: Uses Monte Carlo simulation to evaluate possible actions
+The project includes several sophisticated agent implementations:
+
+### Random Agent
+- **Purpose**: Baseline for comparison and testing
+- **Strategy**: Makes uniformly random legal moves
+- **Implementation**: `agents/random_agent.py`
+
+### Baseline Agent
+- **Purpose**: Simple probabilistic strategy reference
+- **Strategy**: Uses binomial probability calculations with configurable call threshold
+- **Implementation**: `agents/baseline_agent.py`
+- **Features**: Fast decision-making, probability-based bidding
+
+### Monte Carlo Agent (Advanced)
+- **Purpose**: Sophisticated AI using simulation-based decision making
+- **Implementation**: Modular architecture across multiple files:
+  - `agents/mc_agent.py`: Core agent class and game simulation
+  - `agents/mc_utils.py`: Utility functions for determinization and scoring  
+  - `agents/mc_parallel.py`: Parallel processing components
+
+#### Monte Carlo Agent Features
+
+**Phase 1: Weighted Determinization**
+- History-aware probabilistic dice sampling
+- Improved opponent hand estimation based on bidding patterns
+- Configurable via `weighted_sampling=True` parameter
+
+**Phase 2: Parallel Processing**
+- Optional multiprocessing support for faster simulations
+- Configurable worker pools with automatic core detection
+- Maintains statistical equivalence with sequential mode
+- Enable with `enable_parallel=True, num_workers=N`
+
+**Phase 3: Advanced Optimizations**
+- Enhanced action pruning with opponent modeling
+- Multi-criteria bid scoring considering game state
+- Variance reduction using control variates
+- Configurable via `enhanced_pruning=True, variance_reduction=True`
+
+**Phase 4: Code Modularization**
+- Clean separation of concerns across three modules
+- Improved maintainability and extensibility
+- Full backward compatibility preserved
+- Prepared for advanced techniques (ISMCTS, neural networks)
+
+#### Monte Carlo Agent Parameters
+```python
+MonteCarloAgent(
+    name='mc',                    # Agent identifier
+    n=200,                        # Simulations per action evaluation
+    chunk_size=8,                 # Simulations per batch
+    max_rounds=6,                 # Maximum simulation rounds
+    early_stop_margin=0.1,        # Early termination threshold
+    simulate_to_round_end=True,   # Use heuristic evaluation
+    weighted_sampling=False,      # Enable history-aware sampling
+    enable_parallel=False,        # Enable multiprocessing
+    num_workers=None,             # Worker count (auto-detect if None)
+    enhanced_pruning=False,       # Enable advanced action filtering
+    variance_reduction=False      # Enable control variate techniques
+)
+```
 
 ## Development Philosophy
 
@@ -65,7 +122,7 @@ This project follows **Test-Driven Development (TDD)** principles:
 - **Quality Assurance**: Comprehensive test coverage ensures reliability and maintainability
 
 ### Testing Framework
-- **96 comprehensive tests** covering unit, integration, performance, and regression testing
+- **132 comprehensive tests** covering unit, integration, performance, and regression testing
 - **Fast execution** to support frequent TDD cycles
 - **Core functionality focus** rather than exhaustive edge cases
 
@@ -103,7 +160,7 @@ pre-commit install
 ```
 
 #### How It Works
-- **Automatic Testing**: All 96 tests run automatically before each commit
+- **Automatic Testing**: All 132 tests run automatically before each commit
 - **Commit Prevention**: If tests fail, the commit is blocked until issues are resolved
 - **TDD Enforcement**: Ensures all commits maintain the established quality standards
 
