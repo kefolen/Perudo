@@ -176,9 +176,20 @@ class PerudoSimulator:
                 return idx
         return current_idx
 
-    def play_game(self, agents):
+    def play_game(self, agents, betting_history_enabled=False):
         state = self.new_game()
         starting_player = 0
+        
+        # Initialize betting history and trust management if enabled
+        game_history = None
+        trust_manager = None
+        round_num = 0
+        
+        if betting_history_enabled:
+            from agents.mc_utils import GameBettingHistory, PlayerTrustManager
+            game_history = GameBettingHistory(len(agents))
+            trust_manager = PlayerTrustManager(len(agents))
+        
         while sum(1 for c in state['dice_counts'] if c > 0) > 1:
             alive = [i for i, c in enumerate(state['dice_counts']) if c > 0]
             while starting_player not in alive:
@@ -191,6 +202,11 @@ class PerudoSimulator:
             current_player = starting_player
             first_bid_by = None
             loser = None
+            
+            # Update round number for history tracking
+            if game_history:
+                game_history.current_round = round_num
+            
             while loser is None:
                 obs = {
                     'player_idx': current_player,
@@ -202,7 +218,26 @@ class PerudoSimulator:
                     'maputa_restrict_face': maputa_restrict_face,
                     '_simulator': self,
                 }
+                
+                # Add betting history and trust data if enabled
+                if betting_history_enabled and game_history and trust_manager:
+                    obs['betting_history'] = game_history
+                    obs['player_trust'] = trust_manager.trust_params
+                    obs['current_round'] = round_num
+                
                 action = agents[current_player].select_action(obs)
+                
+                # Record betting action in history if enabled
+                if betting_history_enabled and game_history:
+                    from agents.mc_utils import BettingHistoryEntry
+                    entry = BettingHistoryEntry(
+                        player_idx=current_player,
+                        action=action,
+                        round_num=round_num,
+                        dice_count=state['dice_counts'][current_player],
+                        actual_hand=list(hands[current_player])  # Store actual hand
+                    )
+                    game_history.add_entry(entry)
                 if Action.is_bid(action) and first_bid_by is None:
                     first_bid_by = current_player
                     if maputa_active:
@@ -238,7 +273,36 @@ class PerudoSimulator:
 
             state['dice_counts'][loser] = max(0, state['dice_counts'][loser] - 1)
             starting_player = loser
+            
+            # Update betting history with round results if enabled
+            if betting_history_enabled and game_history and trust_manager:
+                # Update bid results for this round's entries
+                round_entries = game_history.get_round_entries(-1)  # Get current round entries
+                for entry in round_entries:
+                    if entry.player_idx == loser:
+                        entry.bid_result = 'lost_dice'
+                    elif entry.player_idx == current_player and action[0] == 'exact' and cnt == current_bid[0]:
+                        entry.bid_result = 'gained_dice'
+                    else:
+                        entry.bid_result = 'won_round' if entry.player_idx != loser else None
+                
+                # Update trust parameters based on round outcome
+                round_result = {
+                    'loser': loser,
+                    'bid_true': bid_true if current_bid else None,
+                    'actual_count': cnt if current_bid else None,
+                    'bid': current_bid
+                }
+                trust_manager.update_trust_after_round(round_result, game_history)
+            
+            # Increment round number for next round
+            round_num += 1
 
         alive = [i for i, c in enumerate(state['dice_counts']) if c > 0]
         winner = alive[0] if len(alive) >= 1 else None
-        return winner, state
+        
+        # Return additional history data if enabled
+        if betting_history_enabled and game_history and trust_manager:
+            return winner, state, game_history, trust_manager
+        else:
+            return winner, state

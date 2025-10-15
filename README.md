@@ -95,6 +95,13 @@ The project includes several sophisticated agent implementations:
 - Full backward compatibility preserved
 - Prepared for advanced techniques (ISMCTS, neural networks)
 
+**Phase 5: Betting History and Trust Management**
+- Comprehensive betting history tracking throughout games
+- Dynamic player trust parameters based on bidding accuracy
+- Bayesian player modeling for improved opponent hand sampling
+- Collective plausibility analysis using historical betting patterns
+- Configurable via `betting_history_enabled=True, bayesian_sampling=True`
+
 #### Monte Carlo Agent Parameters
 ```python
 MonteCarloAgent(
@@ -108,7 +115,12 @@ MonteCarloAgent(
     enable_parallel=False,        # Enable multiprocessing
     num_workers=None,             # Worker count (auto-detect if None)
     enhanced_pruning=False,       # Enable advanced action filtering
-    variance_reduction=False      # Enable control variate techniques
+    variance_reduction=False,     # Enable control variate techniques
+    betting_history_enabled=False,# Enable betting history tracking
+    player_trust_enabled=False,   # Enable dynamic trust parameters
+    trust_learning_rate=0.1,      # Trust parameter adaptation rate
+    history_memory_rounds=10,     # Rounds of history to remember
+    bayesian_sampling=False       # Enable Bayesian player modeling
 )
 ```
 

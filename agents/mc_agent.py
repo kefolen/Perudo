@@ -6,7 +6,7 @@ from agents.baseline_agent import BaselineAgent
 from agents.mc_utils import (
     sample_weighted_dice, compute_enhanced_action_score,
     compute_control_variate_baseline, apply_variance_reduction,
-    heuristic_win_prob
+    heuristic_win_prob, sample_bayesian_player_dice, compute_collective_plausibility
 )
 from agents.mc_parallel import ParallelProcessingMixin, worker_run_chunk
 
@@ -34,7 +34,9 @@ class MonteCarloAgent(ParallelProcessingMixin):
                  chunk_size=8, max_rounds=6, simulate_to_round_end=True,
                  early_stop_margin=0.1, weighted_sampling=False,
                  enable_parallel=False, num_workers=None, enhanced_pruning=False,
-                 variance_reduction=False):
+                 variance_reduction=False, betting_history_enabled=False,
+                 player_trust_enabled=False, trust_learning_rate=0.1,
+                 history_memory_rounds=10, bayesian_sampling=False):
         self.name = name
         self.N = max(1, int(n))
         self.rng = rng or random.Random()
@@ -48,6 +50,13 @@ class MonteCarloAgent(ParallelProcessingMixin):
         self.weighted_sampling = bool(weighted_sampling)
         self.enhanced_pruning = bool(enhanced_pruning)
         self.variance_reduction = bool(variance_reduction)
+        
+        # Initialize betting history parameters (Phase 5)
+        self.betting_history_enabled = bool(betting_history_enabled)
+        self.player_trust_enabled = bool(player_trust_enabled)
+        self.trust_learning_rate = float(trust_learning_rate)
+        self.history_memory_rounds = int(history_memory_rounds)
+        self.bayesian_sampling = bool(bayesian_sampling)
         
         # Initialize parallel processing parameters using mixin
         self._initialize_parallel_parameters(enable_parallel, num_workers)
@@ -72,7 +81,10 @@ class MonteCarloAgent(ParallelProcessingMixin):
             if DC[i] <= 0:
                 hands[i] = []
             else:
-                if self.weighted_sampling:
+                # Use Bayesian sampling if enabled and history available
+                if self.bayesian_sampling and obs.get('betting_history') is not None:
+                    hands[i] = sample_bayesian_player_dice(self, obs, i, DC[i])
+                elif self.weighted_sampling:
                     hands[i] = sample_weighted_dice(self, obs, DC[i])
                 else:
                     # faster generation: use list comprehension with local randint

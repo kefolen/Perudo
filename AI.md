@@ -79,13 +79,35 @@ Junie was used for the following tasks:
 - Full backward compatibility maintained
 - All 48 existing tests continue to pass
 
+### Phase 5: Betting History and Trust Management
+**Objective**: Implement sophisticated opponent modeling through historical betting analysis
+**Implementation**: Comprehensive betting history tracking with dynamic trust parameters and Bayesian player modeling
+**Key Features**:
+- **Betting History Tracking**: Complete game history with `BettingHistoryEntry` and `GameBettingHistory` classes
+- **Dynamic Player Trust**: Trust parameters that adapt based on bidding accuracy using `PlayerTrustManager`
+- **Bayesian Player Modeling**: Individual player dice sampling using `sample_bayesian_player_dice`
+- **Collective Plausibility**: Enhanced bid evaluation using `compute_collective_plausibility` with historical patterns
+- **Enhanced Simulator**: Extended observation structure with betting history and trust data
+- **Backward Compatibility**: All new features are opt-in with sensible defaults
+- **Comprehensive Testing**: 29 new tests (18 unit + 11 integration) covering all betting history functionality
+
+**Technical Components**:
+- `BettingHistoryEntry`: Individual betting actions with context and results
+- `GameBettingHistory`: Complete game history with analysis capabilities (face popularity, player accuracy)
+- `PlayerTrustManager`: Dynamic trust parameter management with learning rate adaptation
+- `calculate_recency_weight`: Temporal weighting for historical data importance
+- `sample_bayesian_player_dice`: History-aware dice sampling with trust-weighted probabilities
+- `compute_collective_plausibility`: Multi-factor plausibility analysis using betting patterns
+
 ### Overall Impact
 The Monte Carlo agent has evolved from a basic simulation-based approach to a sophisticated AI system featuring:
 - **4x performance improvement potential** through parallel processing
-- **Enhanced decision quality** via weighted sampling and advanced scoring
+- **Enhanced decision quality** via weighted sampling, advanced scoring, and opponent modeling
+- **Sophisticated betting analysis** through historical pattern recognition and trust management
+- **Bayesian player modeling** for improved opponent hand estimation
 - **Reduced variance** in simulation results through control variates
 - **Modular architecture** ready for future enhancements (ISMCTS, neural networks)
-- **132 comprehensive tests** ensuring reliability and maintainability
+- **161 comprehensive tests** ensuring reliability and maintainability (29 new tests for Phase 5)
 
 ## Results in the Repository
 
