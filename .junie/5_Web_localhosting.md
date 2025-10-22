@@ -1,408 +1,208 @@
-# Perudo Web Frontend with Local Hosting Specification
+# Perudo Simple Web Interface - MVP Specification
 
-This document outlines the development plan for creating a multiplayer web frontend for the Perudo game with local hosting capabilities, following Test-Driven Development (TDD) principles.
+This document outlines a minimal web interface for the Perudo game following MVP principles for up to 20 users, prioritizing simplicity and Test-Driven Development (TDD).
 
-## Overview
+## Design Principles
 
-The goal is to create a comprehensive web-based multiplayer interface that leverages the existing sophisticated AI agents, particularly the full-featured Monte Carlo agent, while providing real-time multiplayer functionality through modern web technologies.
+- **MVP First**: Core gameplay only, no advanced features
+- **Maximum 20 Users**: Simple architecture sufficient for small user base  
+- **No Advanced Security**: Basic validation only, no enterprise security features
+- **Keep It Simple**: Minimal dependencies, straightforward implementation
+- **TDD Compliance**: Follow existing project testing patterns
 
-### Current State Analysis
+## Target User Scenarios
 
-The existing codebase provides excellent foundations for web frontend development:
-- **Robust Game Engine**: `sim/perudo.py` with comprehensive state management and action handling
-- **Sophisticated AI Agents**: Random, Baseline, and Monte Carlo agents with advanced features
-- **Comprehensive Testing**: 132 tests following TDD principles ensuring reliability
-- **Advanced Features**: Betting history, trust management, parallel processing capabilities
-- **Modular Architecture**: Clean separation of concerns prepared for extension
-
-### Target User Scenarios
-
-1. **Room Creation**: Choose nickname, create room with adjustable settings (player count, bot configuration)
-2. **Room Joining**: Join existing rooms via generated invite codes
-3. **Pre-game Setup**: Player seat arrangement, bot difficulty selection
-4. **Real-time Gameplay**: 60-second action timers, dice visibility controls, live updates
-5. **Game Results**: Round-by-round dice reveals, end-game statistics, restart functionality
+1. **Simple Room Creation**: Enter nickname, create room with 4-digit code
+2. **Easy Room Joining**: Join via room code  
+3. **Basic Gameplay**: Turn-based play with existing AI agents
+4. **Game Results**: Simple win/loss display, restart option
 
 ## Technical Architecture
 
-### Backend Technology Stack
+### Simple Tech Stack
 
-**Core Framework**: FastAPI (Python 3.8+) for seamless integration with existing codebase
-**Real-time Communication**: WebSocket for multiplayer synchronization
-**Database**: SQLite for local persistence and room management
-**AI Integration**: Direct usage of existing agent implementations without modification
-**External Access**: Cloudflare Tunnel for public accessibility without port forwarding
+**Backend**: Flask (Python) - minimal web framework, ~50 lines of code
+**Frontend**: Plain HTML/CSS/JavaScript - no complex frameworks
+**Communication**: HTTP polling every 2 seconds - no WebSockets complexity
+**Storage**: In-memory dictionaries - no database for MVP
+**AI Integration**: Direct import of existing agents from agents/ directory
 
-### Frontend Technology Stack
+### Why This Stack?
 
-**Framework**: React 18 with TypeScript for component-based architecture
-**State Management**: React Context with useReducer for game state
-**Styling**: Tailwind CSS for responsive design
-**Real-time Client**: Native WebSocket API with reconnection handling
-**Build Tool**: Vite for fast development and optimized builds
+- **Flask**: Already Python, integrates directly with existing game code
+- **No Database**: 20 users max, in-memory storage is sufficient  
+- **HTTP Polling**: Simple, reliable, no WebSocket complexity for small user base
+- **Plain JavaScript**: No build steps, frameworks, or dependencies
 
-### Key Architectural Decisions
+## Core Components
 
-**Local Hosting Benefits**:
-- Zero computational limitations for Monte Carlo agent (full n=200+ simulations)
-- Complete access to advanced AI features (parallel processing, Bayesian sampling)
-- No monthly hosting costs or service restrictions
-- Instant deployment and real-time debugging capabilities
-
-**Network Access Strategy**:
-- Cloudflare Tunnel for secure external access without complex router configuration
-- Alternative ngrok support for quick testing scenarios
-- HTTPS automatically provided through tunnel services
-
-## Core Components Implementation
-
-### Game Room Management
+### Room Management (Simple)
 
 ```python
-# Room data model with comprehensive settings
-@dataclass
-class RoomSettings:
-    max_players: int = 6
-    bot_count: int = 0
-    bot_types: List[str] = None  # ['mc', 'baseline', 'random']
-    bot_difficulties: List[str] = None  # ['easy', 'medium', 'hard']
-    start_dice: int = 5
-    timer_duration: int = 60
-    ones_wild: bool = True
-    maputa: bool = True
-    exact: bool = True
+# Simple in-memory storage
+rooms = {}  # room_code: {'players': [], 'game_state': None, 'host': str}
+players = {}  # session_id: {'nickname': str, 'room_code': str}
+
+def create_room(nickname):
+    room_code = random.randint(1000, 9999)  # 4-digit codes
+    session_id = str(uuid.uuid4())[:8]  # Simple session IDs
+    rooms[room_code] = {'players': [session_id], 'game_state': None, 'host': session_id}
+    players[session_id] = {'nickname': nickname, 'room_code': room_code}
+    return room_code, session_id
 ```
 
-**Room Code Generation**: Cryptographically secure 6-character codes using uppercase letters and numbers
-**Bot Configuration**: Support for all existing AI agents with difficulty levels mapped to simulation parameters
-**Player Management**: Session-based tracking with reconnection support
+### Game Integration
 
-### Real-Time Communication Protocol
-
-**WebSocket Message Structure**:
-```typescript
-interface WebSocketMessage {
-  type: string;
-  data: any;
-  timestamp: number;
-  messageId?: string;
-}
-```
-
-**Core Message Types**:
-- `room_join/room_update`: Player management and room status
-- `player_action/game_state_update`: Game actions and state synchronization  
-- `timer_update/timer_expired`: Action timing and auto-forfeit handling
-- `round_result/game_end`: Round outcomes and victory conditions
-
-### Timer Management System
-
-**ActionTimer Class**: Asynchronous countdown with periodic updates and auto-forfeit capability
-**TimerManager**: Centralized timer coordination for multiple concurrent games
-**Bot Integration**: Immediate processing for AI agents with realistic delay simulation
-
-### Monte Carlo Agent Integration
-
-**Full Feature Support**: Complete access to all advanced MC agent capabilities without restrictions
 ```python
-PRODUCTION_MC_CONFIG = {
-    'n': 300,                           # High simulation count
-    'enable_parallel': True,            # Multi-core processing  
-    'weighted_sampling': True,          # History-aware determinization
-    'enhanced_pruning': True,           # Advanced action filtering
-    'variance_reduction': True,         # Statistical optimization
-    'betting_history_enabled': True,    # Player modeling
-    'bayesian_sampling': True,          # Bayesian inference
-    'player_trust_enabled': True       # Trust management
-}
+# Direct integration with existing code
+from sim.perudo import PerudoSimulator
+from agents.random_agent import RandomAgent
+from agents.baseline_agent import BaselineAgent
+from agents.mc_agent import MonteCarloAgent
+
+# Simple game setup
+def start_game(room_code):
+    room = rooms[room_code]
+    players_list = [players[pid]['nickname'] for pid in room['players']]
+    
+    # Add one bot for testing
+    bot = RandomAgent('Bot')
+    game = PerudoSimulator(players_list + ['Bot'])
+    room['game_state'] = game
 ```
 
-**Difficulty Scaling**: Configurable simulation counts and feature enablement based on selected difficulty
-**Async Processing**: Non-blocking AI computation with progress updates for longer computations
+## File Structure
 
-## Database Schema
-
-### SQLite Tables for Local Persistence
-
-```sql
--- Room persistence with settings and status tracking
-CREATE TABLE rooms (
-    code VARCHAR(6) PRIMARY KEY,
-    host_id VARCHAR(36) NOT NULL,
-    settings TEXT NOT NULL,  -- JSON configuration
-    status VARCHAR(20) DEFAULT 'waiting',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Player session management for reconnection support
-CREATE TABLE player_sessions (
-    session_id VARCHAR(36) PRIMARY KEY,
-    room_code VARCHAR(6),
-    nickname VARCHAR(50) NOT NULL,
-    player_order INTEGER,
-    is_bot BOOLEAN DEFAULT FALSE,
-    bot_type VARCHAR(20),
-    bot_difficulty VARCHAR(10),
-    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (room_code) REFERENCES rooms(code)
-);
-
--- Game state snapshots for crash recovery
-CREATE TABLE game_snapshots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    room_code VARCHAR(6),
-    game_state TEXT NOT NULL,  -- JSON serialized state
-    round_number INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (room_code) REFERENCES rooms(code)
-);
+```
+web/
+├── app.py              # Flask app (~100 lines)
+├── static/
+│   ├── style.css       # Basic styles (~50 lines)
+│   └── game.js         # Game interface (~150 lines)
+└── templates/
+    ├── index.html      # Home page (~30 lines)
+    ├── room.html       # Game room (~80 lines)
+    └── game.html       # Game interface (~100 lines)
 ```
 
-## Performance Optimizations
+**Total estimated code**: ~500 lines (vs 2000+ in original spec)
 
-### Local Hosting Resource Management
+## API Endpoints (Simple REST)
 
-**Concurrent Game Limits**: Maximum 3 simultaneous games to ensure responsive performance
-**Memory Management**: Efficient WebSocket connection pooling and message batching
-**CPU Optimization**: Smart bot distribution (max 2 MC agents per game) and adaptive difficulty
+```
+GET  /                  # Home page
+POST /create_room       # Create new room  
+POST /join_room         # Join existing room
+GET  /room/<code>       # Room lobby page
+GET  /game/<code>       # Game page
+POST /action            # Submit game action
+GET  /poll/<code>       # Get current game state
+```
 
-### WebSocket Performance
+## Implementation Plan
 
-**Connection Management**: 
-- Ping/pong keepalive (20s intervals)
-- Graceful reconnection with state recovery
-- Message compression for reduced bandwidth
+### Week 1: Basic Structure
+- Create Flask app with room creation/joining
+- Simple HTML templates for UI
+- Basic room management in memory
+- **Tests**: Room creation/joining functionality
 
-**Message Batching**: 
-- Queue non-critical updates for batch delivery
-- Immediate delivery for critical game actions
-- Configurable batch intervals (default 100ms)
+### Week 2: Game Integration  
+- Integrate with existing PerudoSimulator
+- Add one random bot per game
+- Implement action submission and game state polling
+- **Tests**: Game flow integration, AI agent interaction
 
-## Development Implementation Plan
+### Week 3: UI Polish
+- Add basic CSS for readability
+- Implement dice display and action buttons
+- Add game history and winner display  
+- **Tests**: UI functionality, game completion flows
 
-### Phase 1: Foundation Setup (Weeks 1-2)
+## Simplified Features
 
-**Backend Infrastructure**:
-- FastAPI application with WebSocket endpoint configuration
-- SQLite database schema implementation and migrations
-- Basic room creation and joining functionality
-- Integration with existing `sim/perudo.py` game engine
+### What's Included (MVP)
+- Create/join rooms with 4-digit codes
+- Play Perudo with 1 bot opponent  
+- Basic web interface with dice and actions
+- Automatic bot turns
+- Win/loss display and restart
 
-**Frontend Foundation**:
-- React application setup with TypeScript configuration
-- Basic routing and component structure
-- Room creation and joining UI components
-- WebSocket connection management hooks
+### What's Excluded (Future)
+- Multiple human players (start with 1v1 vs bot)
+- Advanced AI configuration
+- User authentication or accounts
+- Game history or statistics
+- Real-time updates (polling is fine)
+- Mobile optimization
+- Advanced security features
 
-**Testing Requirements**:
-- Unit tests for room management logic
-- WebSocket connection integration tests
-- Database operation validation tests
-- Basic UI component rendering tests
+## Performance Considerations
 
-### Phase 2: Core Game Integration (Weeks 3-4)
+**Concurrent Games**: 5 max (sufficient for 20 users)
+**Memory Usage**: ~10MB for all game states
+**Bot Computation**: Use lightweight RandomAgent for MVP
+**Polling Frequency**: 2-second intervals (balance between responsiveness and load)
 
-**Game Service Implementation**:
-- Complete integration with `PerudoSimulator` class
-- AI agent factory with configuration mapping
-- Timer service with async countdown functionality
-- Game state serialization and recovery
+## Testing Strategy (TDD)
 
-**Real-Time Communication**:
-- Complete WebSocket message protocol implementation
-- Game state synchronization between clients
-- Player action validation and processing
-- Error handling and recovery mechanisms
+### Unit Tests (~20 tests)
+- Room creation and joining logic
+- Game state management  
+- Action validation
+- Bot integration
 
-**Testing Requirements**:
-- Full game flow integration tests
-- AI agent integration validation
-- Timer functionality and auto-forfeit testing
-- Message protocol compliance verification
+### Integration Tests (~10 tests)
+- Full game flow from room creation to completion
+- HTTP endpoint functionality
+- Game state persistence during polling
 
-### Phase 3: Complete User Interface (Weeks 5-6)
+### Manual Testing
+- Browser compatibility (Chrome/Firefox)
+- Basic mobile usability
+- Multi-tab simulation of multiple users
 
-**Game Interface Components**:
-- Interactive dice display with visibility controls
-- Betting interface with legal action validation
-- Player status panel with dice counts and timers
-- Action history display and round result presentations
+## Deployment
 
-**Advanced Features**:
-- Player seat swapping functionality
-- Bot difficulty selection interface
-- Game settings configuration panel
-- Responsive mobile-friendly design
+### Local Development
+```bash
+cd web/
+python app.py  # Runs on localhost:5000
+```
 
-**Testing Requirements**:
-- UI component interaction testing
-- Game interface usability validation
-- Mobile responsiveness verification
-- Cross-browser compatibility testing
+### Simple Sharing (Optional)
+- Use ngrok for temporary external access: `ngrok http 5000`
+- No complex tunneling or SSL certificates needed for MVP
 
-### Phase 4: Deployment and Optimization (Weeks 7-8)
+## Security (Minimal)
 
-**Local Hosting Setup**:
-- Cloudflare Tunnel configuration and documentation
-- Production deployment scripts and monitoring
-- Performance optimization and resource management
-- Security hardening and input validation
-
-**Final Integration**:
-- End-to-end testing with multiple concurrent games
-- Performance benchmarking under realistic load
-- Documentation and user guide creation
-- Error monitoring and logging implementation
-
-**Testing Requirements**:
-- Load testing with multiple concurrent rooms
-- Network connectivity and reconnection testing
-- Security vulnerability assessment
-- Performance benchmarking against targets
-
-## Configuration Parameters
-
-### Server Configuration
-
-| Parameter | Default | Description | Purpose |
-|-----------|---------|-------------|---------|
-| `host` | "0.0.0.0" | Server bind address | External access |
-| `port` | 8000 | HTTP/WebSocket port | Service endpoint |
-| `max_concurrent_rooms` | 3 | Room limit | Resource management |
-| `max_players_per_room` | 6 | Player limit | Game balance |
-| `room_expiry_hours` | 24 | Room cleanup | Storage management |
-
-### Game Configuration
-
-| Parameter | Default | Description | Purpose |
-|-----------|---------|-------------|---------|
-| `default_timer` | 60 | Action timeout (seconds) | Game pacing |
-| `max_mc_agents_per_room` | 2 | MC agent limit | Performance |
-| `enable_reconnection` | True | Session recovery | User experience |
-| `snapshot_frequency` | 5 | State backup interval | Crash recovery |
-
-## Security and Validation
-
-### Input Validation
-
-**Room Code Security**: Cryptographically secure random generation with collision detection
-**Action Validation**: Server-side verification of all game actions against legal move sets
-**Rate Limiting**: Request throttling to prevent abuse (60 requests/minute per IP)
-**Session Management**: Secure session tokens with configurable expiration
-
-### Network Security
-
-**HTTPS Enforcement**: Automatic SSL/TLS through Cloudflare Tunnel
-**CORS Configuration**: Restricted cross-origin access for security
-**WebSocket Authentication**: Token-based connection validation
-**Input Sanitization**: Comprehensive validation of all user inputs
-
-## Monitoring and Logging
-
-### Performance Metrics
-
-**Game Performance**: Monte Carlo agent response times and decision quality metrics
-**System Performance**: Memory usage, CPU utilization, and concurrent connection counts
-**Network Performance**: WebSocket message latency and connection stability
-**User Experience**: Game completion rates and error frequency
-
-### Logging Strategy
-
-**Structured Logging**: JSON-formatted logs with correlation IDs for request tracing
-**Error Tracking**: Comprehensive exception logging with stack traces
-**Audit Trail**: User actions and game events for debugging and analysis
-**Performance Logging**: Response time tracking and resource utilization monitoring
-
-## Testing Strategy
-
-### Test-Driven Development Approach
-
-**Unit Tests**: Individual component functionality validation
-- Room management operations
-- Game state transitions  
-- AI agent integration
-- Timer and WebSocket functionality
-
-**Integration Tests**: Component interaction validation
-- Full game flow scenarios
-- Multi-player synchronization
-- Bot integration testing
-- Database persistence verification
-
-**End-to-End Tests**: Complete user scenario validation
-- Room creation to game completion workflows
-- Error recovery and reconnection scenarios
-- Performance under realistic load conditions
-- Cross-browser and mobile compatibility
-
-**Performance Tests**: Resource usage and scalability validation
-- Concurrent game load testing
-- Monte Carlo agent performance benchmarking
-- WebSocket connection scalability
-- Memory leak detection and prevention
-
-### Expected Performance Targets
-
-| Metric | Target | Measurement Method |
-|--------|--------|-------------------|
-| MC Agent Response | < 5 seconds | Action completion time |
-| WebSocket Latency | < 100ms | Message round-trip time |
-| Concurrent Games | 3 stable | Load testing validation |
-| Memory Usage | < 1GB total | System monitoring |
-| Game Completion Rate | > 95% | Success ratio tracking |
+**Input Validation**: Basic form validation for nicknames and room codes
+**Session Management**: Simple UUID-based sessions (no authentication)
+**Rate Limiting**: None needed for 20 users max
+**HTTPS**: Not required for local/LAN usage
 
 ## Success Criteria
 
-### Functional Requirements
+### Functional Requirements Met
+- ✅ Create and join game rooms
+- ✅ Play complete Perudo game vs AI bot  
+- ✅ Web interface shows dice, bids, and actions
+- ✅ Game determines winner correctly
 
-**Complete User Scenarios**: All specified user workflows implemented and tested
-**AI Integration**: Full access to existing Monte Carlo agent capabilities without compromise
-**Real-Time Performance**: Responsive multiplayer experience with sub-second action processing
-**Reliability**: Graceful error handling and automatic recovery from connection issues
+### Non-Functional Requirements Met  
+- ✅ Supports up to 20 concurrent users
+- ✅ No advanced security complexity
+- ✅ Under 500 lines of new code
+- ✅ Follows TDD with comprehensive tests
+- ✅ Uses existing game engine and agents
 
-### Technical Requirements
+## Future Expansion Path
 
-**Local Hosting**: Successful deployment on developer laptop with external accessibility
-**Performance**: Monte Carlo agent operating at full capacity (n=300+ simulations)
-**Scalability**: Support for multiple concurrent games with configurable resource limits
-**Maintainability**: Clean, testable code following established project TDD principles
+When ready to grow beyond MVP:
+1. Add multiple human players per room
+2. Implement WebSocket for real-time updates  
+3. Add Monte Carlo bot with difficulty settings
+4. Implement user accounts and game statistics
+5. Add mobile-responsive design
 
-### Quality Assurance
-
-**Test Coverage**: > 95% code coverage for new components following existing TDD patterns
-**Documentation**: Comprehensive setup guides and API documentation
-**User Experience**: Intuitive interface with clear feedback and error messaging
-**Security**: Robust input validation and secure network communication
-
-## Future Extension Opportunities
-
-### Advanced Features
-
-**Spectator Mode**: Allow observers to watch ongoing games
-**Tournament System**: Multi-round competitions with bracket management
-**Statistics Tracking**: Player performance analytics and historical data
-**Mobile Application**: Progressive Web App (PWA) for native mobile experience
-
-### AI Enhancements
-
-**Difficulty Customization**: Fine-grained AI parameter tuning for personalized challenge levels
-**Learning Opponents**: Adaptive AI that learns from player behavior patterns
-**Advanced Algorithms**: Integration of ISMCTS and neural network-based agents
-**Multi-Agent Research**: Platform for reinforcement learning experimentation
-
-### Infrastructure Scaling
-
-**Cloud Migration Path**: Smooth transition to cloud hosting when user base grows
-**Database Scaling**: Migration from SQLite to PostgreSQL for larger deployments
-**Containerization**: Docker deployment for simplified installation and distribution
-**API Development**: REST API for third-party integrations and mobile applications
-
-## Conclusion
-
-This specification provides a comprehensive roadmap for developing a fully-featured Perudo web frontend that maximizes the capabilities of the existing sophisticated AI agents through local hosting. The approach ensures zero computational compromises while delivering a modern, responsive multiplayer experience.
-
-The implementation leverages the project's strong TDD foundation and modular architecture to create a maintainable, extensible platform that serves as an excellent showcase for the advanced Monte Carlo agent capabilities while providing engaging gameplay for users.
-
-Key advantages of this approach include immediate deployment capability, full AI feature access, zero ongoing costs, and a scalable foundation for future enhancements as the project evolves.
+This specification prioritizes getting a working multiplayer Perudo game online quickly while respecting the project's educational focus and single-developer constraints.

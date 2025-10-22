@@ -65,6 +65,11 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# Web interface (simple Flask app)
+web/sessions/
+web/*.log
+web/.env
+
 # Scrapy stuff:
 .scrapy
 
