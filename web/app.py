@@ -3,7 +3,7 @@ Flask web application for Perudo game - Week 1 MVP implementation.
 Provides basic room creation and joining functionality.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, abort
+from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify
 import random
 import uuid
 import os
@@ -14,7 +14,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import game modules
 from sim.perudo import PerudoSimulator
-from agents.mc_agent import MonteCarloAgent
+from agents.random_agent import RandomAgent
+from interactive_game import InteractivePerudoGame
 
 app = Flask(__name__)
 app.secret_key = 'perudo-mvp-secret-key-change-in-production'
@@ -129,22 +130,22 @@ def start_game(room_code, requesting_session_id):
     # Get human player count
     num_human_players = len(room['players'])
     
+    # Get human player names
+    human_players = []
+    for player_id in room['players']:
+        if player_id in players:
+            human_players.append(players[player_id]['nickname'])
+    
     # Create AI agents for empty slots
     ai_agents = []
     slots_to_fill = room['max_players'] - num_human_players
     for i in range(slots_to_fill):
         ai_name = f"AI_Bot_{i+1}"
-        ai_agent = MonteCarloAgent(
-            name=ai_name,
-            n=100,  # Reduced simulations for web performance
-            chunk_size=4,
-            max_rounds=4,
-            early_stop_margin=0.15
-        )
+        ai_agent = RandomAgent(name=ai_name)
         ai_agents.append(ai_agent)
     
-    # Create game instance with total player count
-    game = PerudoSimulator(num_players=room['max_players'])
+    # Create interactive game instance
+    game = InteractivePerudoGame(human_players, ai_agents)
     
     # Store game state and AI agents
     room['game_state'] = game
@@ -251,7 +252,37 @@ def room_page(code):
                          room_code=code, 
                          players=room_players,
                          current_player=session_id,
-                         max_players=room_data['max_players'])
+                         max_players=room_data['max_players'],
+                         game_started=room_data['game_state'] is not None)
+
+
+@app.route('/game/<int:code>')
+def game_page(code):
+    """Display game interface page."""
+    if code not in rooms:
+        abort(404)
+    
+    # Get current session
+    session_id = session.get('session_id')
+    if session_id not in players:
+        # Invalid session, redirect to home
+        return redirect(url_for('home'))
+    
+    # Check if player belongs to this room
+    if players[session_id]['room_code'] != code:
+        # Player doesn't belong to this room
+        abort(404)
+    
+    room_data = rooms[code]
+    
+    # Check if game has started
+    if room_data['game_state'] is None:
+        # Game not started, redirect to room lobby
+        return redirect(url_for('room_page', code=code))
+    
+    return render_template('game.html', 
+                         room_code=code,
+                         session_id=session_id)
 
 
 @app.route('/start_game/<int:code>', methods=['POST'])
@@ -275,11 +306,152 @@ def start_game_endpoint(code):
     game_started = start_game(code, session_id)
     
     if game_started:
-        # Game started successfully, stay on room page (game will be visible)
-        return redirect(url_for('room_page', code=code))
+        # Game started successfully, redirect to game page
+        return redirect(url_for('game_page', code=code))
     else:
         # Failed to start (not host, already started, etc.)
         return redirect(url_for('room_page', code=code))
+
+
+@app.route('/action', methods=['POST'])
+def submit_action():
+    """Handle game action submission from players."""
+    # Handle both JSON and form data
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form.to_dict()
+    
+    if not data or 'room_code' not in data or 'action_type' not in data:
+        return jsonify({'error': 'Invalid request data'}), 400
+    
+    try:
+        room_code = int(data['room_code'])
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid room code'}), 400
+    
+    action_type = data['action_type']
+    
+    # Validate room exists
+    if room_code not in rooms:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    room_data = rooms[room_code]
+    game = room_data.get('game_state')
+    
+    if game is None:
+        return jsonify({'error': 'Game not started'}), 400
+    
+    # Get current session
+    session_id = session.get('session_id')
+    if session_id not in players:
+        return jsonify({'error': 'Invalid session'}), 401
+    
+    # Check if player belongs to this room
+    if players[session_id]['room_code'] != room_code:
+        return jsonify({'error': 'Player not in room'}), 403
+    
+    # Find player index in game
+    player_nicknames = [players[pid]['nickname'] for pid in room_data['players']]
+    try:
+        player_index = player_nicknames.index(players[session_id]['nickname'])
+    except ValueError:
+        return jsonify({'error': 'Player not found in game'}), 400
+    
+    # Check if it's the player's turn
+    if game.current_player != player_index:
+        return jsonify({'error': 'Not your turn'}), 400
+    
+    try:
+        # Process action based on type
+        if action_type == 'bid':
+            if 'quantity' not in data or 'face' not in data:
+                return jsonify({'error': 'Missing bid parameters'}), 400
+            
+            quantity = int(data['quantity'])
+            face = int(data['face'])
+            game.submit_bid(quantity, face)
+            
+        elif action_type == 'call':
+            game.submit_call()
+            
+        elif action_type == 'exact':
+            game.submit_exact_call()
+            
+        else:
+            return jsonify({'error': 'Invalid action type'}), 400
+    
+    except Exception as e:
+        return jsonify({'error': f'Action failed: {str(e)}'}), 400
+    
+    # Process bot turns after human action
+    game.process_ai_turns()
+    
+    return jsonify({'success': True, 'game_over': game.is_game_over()})
+
+
+@app.route('/poll/<int:code>')
+def poll_game_state(code):
+    """Get current game state for polling."""
+    if code not in rooms:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    room_data = rooms[code]
+    game = room_data.get('game_state')
+    
+    if game is None:
+        return jsonify({'error': 'Game not started'}), 400
+    
+    # Get current session
+    session_id = session.get('session_id')
+    if session_id not in players:
+        return jsonify({'error': 'Invalid session'}), 401
+    
+    # Check if player belongs to this room
+    if players[session_id]['room_code'] != code:
+        return jsonify({'error': 'Player not in room'}), 403
+    
+    # Find player index
+    player_nicknames = [players[pid]['nickname'] for pid in room_data['players']]
+    try:
+        player_index = player_nicknames.index(players[session_id]['nickname'])
+    except ValueError:
+        return jsonify({'error': 'Player not found in game'}), 400
+    
+    # Get game observation for this player
+    obs = game.get_observation(player_index)
+    
+    # Build response with game state
+    response = {
+        'current_player': game.current_player,
+        'is_your_turn': game.current_player == player_index,
+        'your_dice': obs['hand'],
+        'current_bid': {
+            'quantity': obs['current_bid'][0] if obs['current_bid'] else None,
+            'face': obs['current_bid'][1] if obs['current_bid'] else None
+        } if obs['current_bid'] else None,
+        'legal_actions': [
+            {
+                'type': action[0],
+                'quantity': action[1] if len(action) > 1 else None,
+                'face': action[2] if len(action) > 2 else None
+            }
+            for action in obs['legal_actions']
+        ],
+        'game_over': game.is_game_over(),
+        'winner': game.get_winner() if game.is_game_over() else None,
+        'players': [
+            {
+                'name': game.get_player_name(i),
+                'dice_count': game.dice_counts[i],
+                'is_ai': not game.is_human_player(i)
+            }
+            for i in range(game.get_player_count())
+        ],
+        'round_history': obs.get('round_history', [])  # Include action history
+    }
+    
+    return jsonify(response)
 
 
 if __name__ == '__main__':

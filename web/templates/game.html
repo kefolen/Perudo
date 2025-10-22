@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perudo Game - Room {{ room_code }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .game-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .game-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .dice-display {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .die {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: white;
+        }
+        
+        .current-bid {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e3f2fd;
+            border-radius: 5px;
+        }
+        
+        .players-status {
+            margin: 20px 0;
+        }
+        
+        .player {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .player.current {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+        }
+        
+        .player.ai {
+            border-left-color: #6c757d;
+        }
+        
+        .actions {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .action-form {
+            display: inline-block;
+            margin: 10px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .action-form input, .action-form select, .action-form button {
+            margin: 5px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .action-form button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .action-form button:hover {
+            background-color: #0056b3;
+        }
+        
+        .call-btn {
+            background-color: #dc3545 !important;
+        }
+        
+        .call-btn:hover {
+            background-color: #c82333 !important;
+        }
+        
+        .exact-btn {
+            background-color: #28a745 !important;
+        }
+        
+        .exact-btn:hover {
+            background-color: #218838 !important;
+        }
+        
+        .game-over {
+            text-align: center;
+            padding: 20px;
+            background-color: #d4edda;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .game-history {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        
+        .history-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 14px;
+        }
+        
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        
+        .history-player {
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .history-action {
+            color: #6c757d;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-header">
+            <h1>Perudo Game</h1>
+            <h2>Room: {{ room_code }}</h2>
+        </div>
+        
+        <div id="status-message" class="status-message" style="min-height: 20px;"></div>
+        
+        <div id="game-state">
+            <!-- Game state will be loaded here -->
+            <div class="status-message info">Loading game state...</div>
+        </div>
+    </div>
+
+    <script id="game-config" type="application/json">
+        {"roomCode": {{ room_code|tojson }}, "sessionId": {{ session_id|tojson }}}
+    </script>
+    <script>
+        const config = JSON.parse(document.getElementById('game-config').textContent);
+        const roomCode = config.roomCode;
+        const sessionId = config.sessionId;
+        let gameState = null;
+        let pollInterval = null;
+
+        // Start polling when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            startPolling();
+        });
+
+        function startPolling() {
+            pollGameState();
+            pollInterval = setInterval(pollGameState, 2000); // Poll every 2 seconds
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
+        async function pollGameState() {
+            try {
+                const response = await fetch(`/poll/${roomCode}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    gameState = data;
+                    updateGameDisplay();
+                    if (data.game_over) {
+                        stopPolling();
+                    }
+                } else {
+                    showMessage(data.error || 'Failed to get game state', 'error');
+                }
+            } catch (error) {
+                showMessage('Connection error: ' + error.message, 'error');
+            }
+        }
+
+        function updateGameDisplay() {
+            if (!gameState) return;
+
+            const container = document.getElementById('game-state');
+            
+            if (gameState.game_over) {
+                container.innerHTML = `
+                    <div class="game-over">
+                        <h2>Game Over!</h2>
+                        <p>Winner: ${gameState.winner !== null ? gameState.players[gameState.winner].name : 'No winner'}</p>
+                        <button onclick="window.location.href='/'">To Main Page</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Preserve input field values before updating
+            const quantityInput = document.getElementById('bid-quantity');
+            const faceSelect = document.getElementById('bid-face');
+            const savedQuantity = quantityInput ? quantityInput.value : '';
+            const savedFace = faceSelect ? faceSelect.value : '1';
+
+            let html = '';
+            
+            // Your dice
+            html += `
+                <div class="current-bid">
+                    <h3>Your Dice</h3>
+                    <div class="dice-display">
+                        ${gameState.your_dice.map(die => `<div class="die">${die}</div>`).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Current bid
+            if (gameState.current_bid) {
+                html += `
+                    <div class="current-bid">
+                        <h3>Current Bid</h3>
+                        <p>${gameState.current_bid.quantity} × ${gameState.current_bid.face}</p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="current-bid">
+                        <h3>Current Bid</h3>
+                        <p>No bid yet - first player to bid!</p>
+                    </div>
+                `;
+            }
+
+            // Players status
+            html += `
+                <div class="players-status">
+                    <h3>Players</h3>
+                    ${gameState.players.map((player, index) => `
+                        <div class="player ${index === gameState.current_player ? 'current' : ''} ${player.is_ai ? 'ai' : ''}">
+                            <span>${player.name} ${player.is_ai ? '(AI)' : ''}</span>
+                            <span>Dice: ${player.dice_count}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            // Game history
+            if (gameState.round_history && gameState.round_history.length > 0) {
+                html += `
+                    <div class="game-history">
+                        <h3>Round History</h3>
+                        ${gameState.round_history.map(entry => `
+                            <div class="history-item">
+                                <span class="history-player">${entry.player}:</span>
+                                <span class="history-action">${entry.action}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Calculate total dice count for max quantity validation
+            const totalDice = gameState.players.reduce((sum, player) => sum + player.dice_count, 0);
+
+            // Actions
+            if (gameState.is_your_turn) {
+                html += `
+                    <div class="actions">
+                        <h3>Your Turn - Choose Action</h3>
+                        
+                        <div class="action-form">
+                            <h4>Make Bid</h4>
+                            <input type="number" id="bid-quantity" min="1" max="${totalDice}" placeholder="Quantity" value="${savedQuantity}">
+                            <select id="bid-face">
+                                <option value="1" ${savedFace === '1' ? 'selected' : ''}>1 (Wild)</option>
+                                <option value="2" ${savedFace === '2' ? 'selected' : ''}>2</option>
+                                <option value="3" ${savedFace === '3' ? 'selected' : ''}>3</option>
+                                <option value="4" ${savedFace === '4' ? 'selected' : ''}>4</option>
+                                <option value="5" ${savedFace === '5' ? 'selected' : ''}>5</option>
+                                <option value="6" ${savedFace === '6' ? 'selected' : ''}>6</option>
+                            </select>
+                            <button onclick="submitBid()">Bid</button>
+                        </div>
+
+                        ${gameState.current_bid ? `
+                            <div class="action-form">
+                                <h4>Challenge Bid</h4>
+                                <button class="call-btn" onclick="submitCall()">Call (Challenge)</button>
+                            </div>
+
+                            <div class="action-form">
+                                <h4>Exact Call</h4>
+                                <button class="exact-btn" onclick="submitExact()">Exact</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } else {
+                const currentPlayerName = gameState.players[gameState.current_player]?.name || 'Unknown';
+                html += `
+                    <div class="actions">
+                        <h3>Waiting for ${currentPlayerName}...</h3>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function submitBid() {
+            const quantity = parseInt(document.getElementById('bid-quantity').value);
+            const face = parseInt(document.getElementById('bid-face').value);
+
+            if (!quantity || quantity < 1) {
+                showMessage('Please enter a valid quantity', 'error');
+                return;
+            }
+
+            await submitAction('bid', { quantity, face });
+        }
+
+        async function submitCall() {
+            await submitAction('call');
+        }
+
+        async function submitExact() {
+            await submitAction('exact');
+        }
+
+        async function submitAction(actionType, params = {}) {
+            try {
+                const response = await fetch('/action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        room_code: roomCode,
+                        action_type: actionType,
+                        ...params
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('Action submitted successfully', 'info');
+                    // Poll immediately to get updated state
+                    setTimeout(pollGameState, 100);
+                } else {
+                    showMessage(data.error || 'Action failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Connection error: ' + error.message, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('status-message');
+            messageDiv.textContent = message;
+            messageDiv.className = `status-message ${type}`;
+            messageDiv.style.visibility = 'visible';
+            
+            // Hide message after 3 seconds
+            setTimeout(() => {
+                messageDiv.style.visibility = 'hidden';
+            }, 3000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', stopPolling);
+    </script>
+</body>
+</html>

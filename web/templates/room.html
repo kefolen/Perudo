@@ -80,7 +80,14 @@
         </div>
         
         <div class="game-status">
-            {% if players|length == 0 %}
+            {% if game_started %}
+                <p><strong>Game in Progress!</strong></p>
+                <p>The game has started. Redirecting to game...</p>
+                <script>
+                    // Immediately redirect to game page if game has started
+                    window.location.href = '/game/{{ room_code }}';
+                </script>
+            {% elif players|length == 0 %}
                 <p><strong>Empty room</strong></p>
                 <p>Waiting for players to join...</p>
             {% elif players|length < max_players %}
