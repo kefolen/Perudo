@@ -20,6 +20,13 @@
             background-color: #28a745; color: white; padding: 2px 8px; 
             border-radius: 12px; font-size: 0.8em;
         }
+        .ai-badge {
+            background-color: #6c757d; color: white; padding: 2px 8px;
+            border-radius: 12px; font-size: 0.8em; margin-left: 5px;
+        }
+        .ai-player {
+            background-color: #f8f9fa; border-left-color: #6c757d;
+        }
         .current-player { background-color: #e3f2fd; border-left: 4px solid #2196f3; }
         .game-status { 
             margin: 20px 0; padding: 15px; background-color: #fff3cd; 
@@ -61,9 +68,16 @@
             {% if players %}
                 <ul class="player-list">
                     {% for player in players %}
-                        <li class="player-item {% if player.session_id == current_player %}current-player{% endif %}">
+                        <li class="player-item {% if player.session_id == current_player %}current-player{% endif %} {% if player.is_ai %}ai-player{% endif %}">
                             <div>
                                 <span class="player-name">{{ player.nickname }}</span>
+                                {% if player.is_ai %}
+                                    <span class="ai-badge">
+                                        {% if player.agent_type == 'random' %}RANDOM AI{% endif %}
+                                        {% if player.agent_type == 'baseline' %}BASELINE AI{% endif %}
+                                        {% if player.agent_type == 'mc' %}MONTE CARLO AI{% endif %}
+                                    </span>
+                                {% endif %}
                                 {% if player.is_host %}
                                     <span class="host-badge">HOST</span>
                                 {% endif %}

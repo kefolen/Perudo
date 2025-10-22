@@ -44,6 +44,18 @@ class InteractivePerudoGame:
         self.first_bid_by = None
         self.round_history = []  # Track actions within current round
         
+        # Round end state management
+        self.round_end_state = False  # True when showing round results
+        self.round_end_loser = None
+        self.round_end_last_bid = None
+        self.round_end_actual_count = None
+        self.round_end_all_hands = None
+        self.human_continue_status = {}  # Track which humans have pressed continue
+        
+        # AI processing state management
+        self.ai_thinking = False  # True when an AI is actively processing their turn
+        self.ai_thinking_player = None  # Index of the AI player that is thinking
+        
         # Start new round
         self._start_new_round()
     
@@ -108,7 +120,9 @@ class InteractivePerudoGame:
             'winner': None,
             'maputa_active': self.maputa_active,
             'maputa_restrict_face': self.maputa_restrict_face,
-            'round_history': list(self.round_history)  # Include action history
+            'round_history': list(self.round_history),  # Include action history
+            'ai_thinking': self.ai_thinking,  # Include AI thinking status
+            'ai_thinking_player': self.ai_thinking_player  # Include which AI is thinking
         }
     
     def submit_bid(self, quantity, face):
@@ -215,8 +229,28 @@ class InteractivePerudoGame:
         
         return True
     
-    def _handle_round_end(self, loser):
+    def _handle_round_end(self, loser, actual_count=None):
         """Handle the end of a round when someone loses a die."""
+        # Calculate actual count if not provided (for calls/exacts)
+        if actual_count is None and self.current_bid:
+            _, actual_count = self.simulator.is_bid_true(
+                self.hands, 
+                self.current_bid,
+                ones_are_wild=(self.simulator.ones_are_wild and not self.maputa_active)
+            )
+        
+        # Enter round end state
+        self.round_end_state = True
+        self.round_end_loser = loser
+        self.round_end_last_bid = self.current_bid
+        self.round_end_actual_count = actual_count
+        self.round_end_all_hands = [list(hand) for hand in self.hands]  # Copy all hands
+        
+        # Initialize continue status for all human players
+        self.human_continue_status = {}
+        for i in range(len(self.players)):
+            self.human_continue_status[i] = False
+        
         # Remove a die from loser
         self.state['dice_counts'][loser] = max(0, self.state['dice_counts'][loser] - 1)
         
@@ -225,10 +259,10 @@ class InteractivePerudoGame:
         if len(alive_players) <= 1:
             self.game_over = True
             self.winner = alive_players[0] if alive_players else None
+            self.round_end_state = False  # No need for round end state if game over
         else:
-            # Start new round with loser as starting player
+            # Will start new round after all humans continue
             self.current_player = loser
-            self._start_new_round()
     
     def is_game_over(self):
         """Check if game is over."""
@@ -264,6 +298,58 @@ class InteractivePerudoGame:
             ai_index = player_index - len(self.players)
             return f"AI_Bot_{ai_index + 1}"
     
+    def submit_continue(self, player_index):
+        """Submit continue action for a human player during round end state."""
+        if not self.round_end_state:
+            raise ValueError("Not in round end state")
+        
+        if not self.is_human_player(player_index):
+            raise ValueError("Only human players can continue")
+        
+        # Mark this human player as having continued
+        self.human_continue_status[player_index] = True
+        
+        # Check if all human players have continued
+        if all(self.human_continue_status.values()):
+            self._continue_after_round_end()
+        
+        return True
+    
+    def _continue_after_round_end(self):
+        """Continue game after all human players have pressed continue."""
+        if not self.round_end_state:
+            return
+        
+        # Clear round end state
+        self.round_end_state = False
+        self.round_end_loser = None
+        self.round_end_last_bid = None
+        self.round_end_actual_count = None
+        self.round_end_all_hands = None
+        self.human_continue_status = {}
+        
+        # Start new round if game not over
+        if not self.is_game_over():
+            self._start_new_round()
+    
+    def is_in_round_end_state(self):
+        """Check if currently in round end state."""
+        return self.round_end_state
+    
+    def get_round_end_info(self):
+        """Get information about the round end for display."""
+        if not self.round_end_state:
+            return None
+        
+        return {
+            'loser': self.round_end_loser,
+            'loser_name': self.get_player_name(self.round_end_loser),
+            'last_bid': self.round_end_last_bid,
+            'actual_count': self.round_end_actual_count,
+            'all_hands': self.round_end_all_hands,
+            'continue_status': dict(self.human_continue_status)
+        }
+    
     def process_ai_turns(self):
         """Process all consecutive AI turns until it's a human player's turn or game ends."""
         while (not self.is_game_over() and 
@@ -273,26 +359,36 @@ class InteractivePerudoGame:
             if ai_index >= len(self.ai_agents):
                 break
             
-            ai_agent = self.ai_agents[ai_index]
-            obs = self.get_observation(self.current_player)
+            # Set AI thinking status before processing
+            self.ai_thinking = True
+            self.ai_thinking_player = self.current_player
             
-            # Convert observation to format expected by agents
-            agent_obs = {
-                'player_idx': obs['player_idx'],
-                'my_hand': obs['hand'],
-                'dice_counts': obs['dice_counts'],
-                'current_bid': self.current_bid,
-                'history': [],
-                'maputa_active': obs.get('maputa_active', False),
-                'maputa_restrict_face': obs.get('maputa_restrict_face'),
-                '_simulator': self.simulator,
-            }
-            
-            action = ai_agent.select_action(agent_obs)
-            
-            if action[0] == 'bid':
-                self.submit_bid(action[1], action[2])
-            elif action[0] == 'call':
-                self.submit_call()
-            elif action[0] == 'exact':
-                self.submit_exact_call()
+            try:
+                ai_agent = self.ai_agents[ai_index]
+                obs = self.get_observation(self.current_player)
+                
+                # Convert observation to format expected by agents
+                agent_obs = {
+                    'player_idx': obs['player_idx'],
+                    'my_hand': obs['hand'],
+                    'dice_counts': obs['dice_counts'],
+                    'current_bid': self.current_bid,
+                    'history': [],
+                    'maputa_active': obs.get('maputa_active', False),
+                    'maputa_restrict_face': obs.get('maputa_restrict_face'),
+                    '_simulator': self.simulator,
+                }
+                
+                action = ai_agent.select_action(agent_obs)
+                
+                if action[0] == 'bid':
+                    self.submit_bid(action[1], action[2])
+                elif action[0] == 'call':
+                    self.submit_call()
+                elif action[0] == 'exact':
+                    self.submit_exact_call()
+                    
+            finally:
+                # Clear AI thinking status after processing
+                self.ai_thinking = False
+                self.ai_thinking_player = None

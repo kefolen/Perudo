@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1000px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -18,6 +18,23 @@
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .game-content-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        
+        .main-game-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .sidebar-history {
+            flex: 0 0 300px;
+            position: sticky;
+            top: 20px;
         }
         
         .game-header {
@@ -153,6 +170,25 @@
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 5px;
+            min-height: 150px;
+        }
+        
+        .game-history h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 8px;
+        }
+        
+        .history-empty {
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            padding: 20px 0;
+            background-color: #ffffff;
+            border-radius: 4px;
+            border: 1px dashed #dee2e6;
         }
         
         .history-item {
@@ -173,6 +209,148 @@
         .history-action {
             color: #6c757d;
             margin-left: 10px;
+        }
+        
+        /* Round End Display Styles */
+        .round-end-display {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+        }
+        
+        .round-end-title {
+            text-align: center;
+            color: #856404;
+            margin-bottom: 20px;
+        }
+        
+        .round-results {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .loser-info {
+            color: #dc3545;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .bid-info {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .actual-count {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .all-hands-display {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e3f2fd;
+            border-radius: 5px;
+        }
+        
+        .player-hand-display {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .player-hand-display.loser {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        
+        .player-hand-name {
+            font-weight: bold;
+            min-width: 120px;
+            margin-right: 15px;
+        }
+        
+        .player-hand-dice {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .hand-die {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            background-color: white;
+        }
+        
+        .hand-die.highlighted {
+            border: 2px solid #28a745;
+            box-shadow: 0 0 4px rgba(40, 167, 69, 0.3);
+        }
+        
+        .continue-section {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #d4edda;
+            border-radius: 5px;
+        }
+        
+        .continue-btn {
+            background-color: #28a745 !important;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .continue-btn:hover {
+            background-color: #218838 !important;
+        }
+        
+        .continue-btn:disabled {
+            background-color: #6c757d !important;
+            cursor: not-allowed;
+        }
+        
+        .continue-status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .ai-thinking-indicator {
+            text-align: center;
+            margin: 10px 0;
+            padding: 8px 12px;
+            background-color: #e8f4fd;
+            color: #0c5460;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
         }
     </style>
 </head>
@@ -253,16 +431,55 @@
                 return;
             }
 
+            // Check if in round end state
+            if (gameState.round_end_state && gameState.round_end_info) {
+                displayRoundEndState();
+                return;
+            }
+
             // Preserve input field values before updating
             const quantityInput = document.getElementById('bid-quantity');
             const faceSelect = document.getElementById('bid-face');
             const savedQuantity = quantityInput ? quantityInput.value : '';
             const savedFace = faceSelect ? faceSelect.value : '1';
 
-            let html = '';
+            // Build history sidebar content - always show the history area
+            let historyHtml = '';
+            if (gameState.round_history && gameState.round_history.length > 0) {
+                historyHtml = `
+                    <div class="game-history">
+                        <h3>Round History</h3>
+                        ${gameState.round_history.map(entry => `
+                            <div class="history-item">
+                                <span class="history-player">${entry.player}:</span>
+                                <span class="history-action">${entry.action}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                // Show placeholder when history is empty
+                const totalDice = gameState.players.reduce((sum, player) => sum + player.dice_count, 0);
+                const currentPlayerName = gameState.players[gameState.current_player]?.name || 'Unknown';
+                historyHtml = `
+                    <div class="game-history">
+                        <h3>Round History</h3>
+                        <div class="history-empty">
+                            <div>No actions yet this round</div>
+                            <div style="margin-top: 8px; font-size: 12px;">
+                                Current turn: ${currentPlayerName}<br>
+                                Total dice: ${totalDice}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Build main content
+            let mainHtml = '';
             
             // Your dice
-            html += `
+            mainHtml += `
                 <div class="current-bid">
                     <h3>Your Dice</h3>
                     <div class="dice-display">
@@ -273,14 +490,14 @@
 
             // Current bid
             if (gameState.current_bid) {
-                html += `
+                mainHtml += `
                     <div class="current-bid">
                         <h3>Current Bid</h3>
                         <p>${gameState.current_bid.quantity} × ${gameState.current_bid.face}</p>
                     </div>
                 `;
             } else {
-                html += `
+                mainHtml += `
                     <div class="current-bid">
                         <h3>Current Bid</h3>
                         <p>No bid yet - first player to bid!</p>
@@ -289,7 +506,7 @@
             }
 
             // Players status
-            html += `
+            mainHtml += `
                 <div class="players-status">
                     <h3>Players</h3>
                     ${gameState.players.map((player, index) => `
@@ -301,27 +518,12 @@
                 </div>
             `;
 
-            // Game history
-            if (gameState.round_history && gameState.round_history.length > 0) {
-                html += `
-                    <div class="game-history">
-                        <h3>Round History</h3>
-                        ${gameState.round_history.map(entry => `
-                            <div class="history-item">
-                                <span class="history-player">${entry.player}:</span>
-                                <span class="history-action">${entry.action}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-
             // Calculate total dice count for max quantity validation
             const totalDice = gameState.players.reduce((sum, player) => sum + player.dice_count, 0);
 
             // Actions
             if (gameState.is_your_turn) {
-                html += `
+                mainHtml += `
                     <div class="actions">
                         <h3>Your Turn - Choose Action</h3>
                         
@@ -354,14 +556,36 @@
                 `;
             } else {
                 const currentPlayerName = gameState.players[gameState.current_player]?.name || 'Unknown';
-                html += `
+                const currentPlayer = gameState.players[gameState.current_player];
+                
+                // Check if AI is thinking
+                let waitingMessage = `Waiting for ${currentPlayerName}...`;
+                if (gameState.ai_thinking && 
+                    gameState.ai_thinking_player === gameState.current_player && 
+                    currentPlayer?.is_ai) {
+                    waitingMessage = `${currentPlayerName} is thinking...`;
+                }
+                
+                mainHtml += `
                     <div class="actions">
-                        <h3>Waiting for ${currentPlayerName}...</h3>
+                        <h3 id="waiting-message">${waitingMessage}</h3>
+                        ${gameState.ai_thinking && gameState.ai_thinking_player === gameState.current_player && currentPlayer?.is_ai ? 
+                            '<div class="ai-thinking-indicator">🤖 Processing turn...</div>' : ''}
                     </div>
                 `;
             }
 
-            container.innerHTML = html;
+            // Combine into two-column layout
+            container.innerHTML = `
+                <div class="game-content-wrapper">
+                    <div class="main-game-content">
+                        ${mainHtml}
+                    </div>
+                    <div class="sidebar-history">
+                        ${historyHtml}
+                    </div>
+                </div>
+            `;
         }
 
         async function submitBid() {
@@ -382,6 +606,116 @@
 
         async function submitExact() {
             await submitAction('exact');
+        }
+
+        async function submitContinue() {
+            await submitAction('continue');
+        }
+
+        function displayRoundEndState() {
+            const container = document.getElementById('game-state');
+            const roundInfo = gameState.round_end_info;
+            
+            // Build all hands display (left side)
+            let allHandsHtml = '';
+            if (roundInfo.all_hands) {
+                allHandsHtml = `
+                    <div class="all-hands-display">
+                        <h3>All Player Hands</h3>
+                        ${gameState.players.map((player, index) => `
+                            <div class="player-hand-display ${index === roundInfo.loser ? 'loser' : ''}">
+                                <div class="player-hand-name">
+                                    ${player.name}${index === roundInfo.loser ? ' (Lost die)' : ''}
+                                </div>
+                                <div class="player-hand-dice">
+                                    ${roundInfo.all_hands[index] ? roundInfo.all_hands[index].map(die => {
+                                        // Highlight dice that match the last bid value
+                                        // Ones are wild, so they count for any bid face except when bidding ones
+                                        const bidFace = roundInfo.last_bid[1];
+                                        const shouldHighlight = (die == bidFace) || (die == 1 && bidFace != 1);
+                                        const highlightClass = shouldHighlight ? ' highlighted' : '';
+                                        return `<div class="hand-die${highlightClass}">${die}</div>`;
+                                    }).join('') : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            // Build round results section
+            let roundResultsHtml = '';
+            if (roundInfo.last_bid) {
+                const bidFace = roundInfo.last_bid[1];
+                const bidQuantity = roundInfo.last_bid[0];
+                const actualCount = roundInfo.actual_count || 0;
+                
+                roundResultsHtml = `
+                    <div class="round-results">
+                        <div class="loser-info">
+                            ${roundInfo.loser_name} lost a die!
+                        </div>
+                        <div class="bid-info">
+                            Last bid: ${bidQuantity} × ${bidFace}
+                        </div>
+                        <div class="actual-count">
+                            Actual count of ${bidFace}s: ${actualCount}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Determine if current player can continue
+            const currentPlayerIndex = getCurrentPlayerIndex();
+            const isHumanPlayer = currentPlayerIndex < gameState.players.length && !gameState.players[currentPlayerIndex].is_ai;
+            const hasContinued = roundInfo.continue_status && roundInfo.continue_status[currentPlayerIndex];
+            
+            // Build continue section
+            let continueHtml = '';
+            if (isHumanPlayer) {
+                const allHumansCount = gameState.players.filter(p => !p.is_ai).length;
+                const continuedCount = roundInfo.continue_status ? Object.values(roundInfo.continue_status).filter(c => c).length : 0;
+                
+                continueHtml = `
+                    <div class="continue-section">
+                        <button class="continue-btn" ${hasContinued ? 'disabled' : ''} onclick="submitContinue()">
+                            ${hasContinued ? 'Waiting for other players...' : 'Continue'}
+                        </button>
+                        <div class="continue-status">
+                            ${continuedCount} of ${allHumansCount} players ready
+                        </div>
+                    </div>
+                `;
+            } else {
+                continueHtml = `
+                    <div class="continue-section">
+                        <div class="continue-status">
+                            Waiting for human players to continue...
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Combine into layout (hands on left, results on right)
+            container.innerHTML = `
+                <div class="round-end-display">
+                    <h2 class="round-end-title">Round Complete!</h2>
+                    <div class="game-content-wrapper">
+                        <div class="sidebar-history">
+                            ${allHandsHtml}
+                        </div>
+                        <div class="main-game-content">
+                            ${roundResultsHtml}
+                            ${continueHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function getCurrentPlayerIndex() {
+            // Return the current user's player index from game state
+            return gameState.your_player_index || 0;
         }
 
         async function submitAction(actionType, params = {}) {

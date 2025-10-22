@@ -8,6 +8,7 @@ import random
 import uuid
 import os
 import sys
+import json
 
 # Add parent directory to path for importing game modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,23 +16,75 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import game modules
 from sim.perudo import PerudoSimulator
 from agents.random_agent import RandomAgent
+from agents.baseline_agent import BaselineAgent
+from agents.mc_agent import MonteCarloAgent
 from interactive_game import InteractivePerudoGame
 
 app = Flask(__name__)
 app.secret_key = 'perudo-mvp-secret-key-change-in-production'
 
 # In-memory storage for MVP (as specified in requirements)
-rooms = {}  # room_code: {'players': [], 'game_state': None, 'host': str}
+rooms = {}  # room_code: {'players': [], 'game_state': None, 'host': str, 'ai_configs': []}
 players = {}  # session_id: {'nickname': str, 'room_code': str}
 
 
-def create_room(nickname, max_players=4):
+def load_mc_config():
+    """Load MonteCarloAgent configuration from mc_config.json."""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'mc_config.json')
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        # Return default configuration if file not found or invalid
+        print(f"Warning: Could not load mc_config.json: {e}")
+        return {
+            "name": "MC_Agent",
+            "n": 100,
+            "chunk_size": 8,
+            "max_rounds": 4,
+            "simulate_to_round_end": True,
+            "early_stop_margin": 0.15,
+            "weighted_sampling": False,
+            "enable_parallel": False,
+            "num_workers": None,
+            "enhanced_pruning": False,
+            "variance_reduction": False,
+            "betting_history_enabled": False,
+            "player_trust_enabled": False,
+            "trust_learning_rate": 0.1,
+            "history_memory_rounds": 10,
+            "bayesian_sampling": False
+        }
+
+
+def create_agent_from_config(agent_config):
+    """Create an AI agent instance from configuration."""
+    agent_type = agent_config.get('type', 'random')
+    agent_name = agent_config.get('name', 'AI_Agent')
+    
+    if agent_type == 'random':
+        return RandomAgent(name=agent_name)
+    elif agent_type == 'baseline':
+        return BaselineAgent(name=agent_name)
+    elif agent_type == 'mc':
+        # Load MC configuration and create agent
+        mc_config = load_mc_config()
+        # Remove 'name' and documentation fields from mc_config as they conflict with or are not constructor parameters
+        mc_params = {k: v for k, v in mc_config.items() if k != 'name' and not k.startswith('_')}
+        return MonteCarloAgent(name=agent_name, **mc_params)
+    else:
+        # Default to random agent for unknown types
+        return RandomAgent(name=agent_name)
+
+
+def create_room(nickname, max_players=4, ai_configs=None):
     """
-    Create a new game room with a unique 4-digit code.
+    Create a new game room with a unique 4-digit code, pre-populated with AI players.
     
     Args:
         nickname (str): The nickname of the room creator
         max_players (int): Maximum number of players (2-8, default 4)
+        ai_configs (list): List of AI configurations for non-human slots
         
     Returns:
         tuple: (room_code, session_id) - 4-digit room code and 8-char session ID
@@ -51,53 +104,104 @@ def create_room(nickname, max_players=4):
     # Generate 8-character session ID
     session_id = str(uuid.uuid4())[:8]
     
+    # Create default AI configurations if none provided
+    if ai_configs is None:
+        ai_configs = []
+        for i in range(max_players - 1):  # -1 for the human host
+            ai_configs.append({
+                'type': 'random',
+                'name': f'AI_Bot_{i+1}',
+                'is_ai': True
+            })
+    
+    # Create player list with human host first, then AI placeholders
+    players_list = [{'session_id': session_id, 'is_ai': False}]
+    for ai_config in ai_configs:
+        ai_session_id = f"ai_{uuid.uuid4().hex[:8]}"
+        players_list.append({
+            'session_id': ai_session_id, 
+            'is_ai': True,
+            'ai_config': ai_config
+        })
+    
     # Store room data
     rooms[room_code] = {
-        'players': [session_id],
+        'players': players_list,
         'game_state': None,
         'host': session_id,
-        'max_players': max_players
+        'max_players': max_players,
+        'ai_configs': ai_configs
     }
     
-    # Store player data
+    # Store human player data
     players[session_id] = {
         'nickname': nickname,
-        'room_code': room_code
+        'room_code': room_code,
+        'is_ai': False
     }
+    
+    # Store AI player data
+    for player in players_list[1:]:  # Skip human host
+        if player['is_ai']:
+            players[player['session_id']] = {
+                'nickname': player['ai_config']['name'],
+                'room_code': room_code,
+                'is_ai': True,
+                'ai_config': player['ai_config']
+            }
     
     return room_code, session_id
 
 
 def join_room(room_code, nickname):
     """
-    Join an existing room with the given code.
+    Join an existing room by replacing the topmost AI player.
     
     Args:
         room_code (int): The 4-digit room code
         nickname (str): The nickname of the joining player
         
     Returns:
-        str or None: Session ID if successful, None if room doesn't exist or is full
+        str or None: Session ID if successful, None if room doesn't exist or no AI slots available
     """
     if room_code not in rooms:
         return None
     
     room = rooms[room_code]
     
-    # Check if room is full
-    if len(room['players']) >= room['max_players']:
+    # Find the first AI player to replace (search from top to bottom)
+    ai_player_index = None
+    for i, player in enumerate(room['players']):
+        if player['is_ai']:
+            ai_player_index = i
+            break
+    
+    # No AI players to replace - room is full of humans
+    if ai_player_index is None:
         return None
     
     # Generate session ID for the joining player
     session_id = str(uuid.uuid4())[:8]
     
-    # Add player to room
-    room['players'].append(session_id)
+    # Get the AI player being replaced
+    ai_player = room['players'][ai_player_index]
+    old_ai_session_id = ai_player['session_id']
     
-    # Store player data
+    # Remove old AI player data
+    if old_ai_session_id in players:
+        del players[old_ai_session_id]
+    
+    # Replace AI player with human player
+    room['players'][ai_player_index] = {
+        'session_id': session_id,
+        'is_ai': False
+    }
+    
+    # Store new human player data
     players[session_id] = {
         'nickname': nickname,
-        'room_code': room_code
+        'room_code': room_code,
+        'is_ai': False
     }
     
     return session_id
@@ -105,7 +209,7 @@ def join_room(room_code, nickname):
 
 def start_game(room_code, requesting_session_id):
     """
-    Start a game in the given room, filling empty slots with AI agents.
+    Start a game in the given room using pre-configured players and AI agents.
     
     Args:
         room_code (int): The 4-digit room code
@@ -127,24 +231,26 @@ def start_game(room_code, requesting_session_id):
     if room['game_state'] is not None:
         return False
     
-    # Get human player count
-    num_human_players = len(room['players'])
-    
-    # Get human player names
+    # Separate human and AI players from the room's player list
     human_players = []
-    for player_id in room['players']:
-        if player_id in players:
-            human_players.append(players[player_id]['nickname'])
-    
-    # Create AI agents for empty slots
     ai_agents = []
-    slots_to_fill = room['max_players'] - num_human_players
-    for i in range(slots_to_fill):
-        ai_name = f"AI_Bot_{i+1}"
-        ai_agent = RandomAgent(name=ai_name)
-        ai_agents.append(ai_agent)
     
-    # Create interactive game instance
+    for player_entry in room['players']:
+        player_session_id = player_entry['session_id']
+        
+        if player_session_id in players:
+            player_data = players[player_session_id]
+            
+            if player_data.get('is_ai', False):
+                # Create AI agent from configuration
+                ai_config = player_data.get('ai_config', {'type': 'random', 'name': 'AI_Agent'})
+                ai_agent = create_agent_from_config(ai_config)
+                ai_agents.append(ai_agent)
+            else:
+                # Human player
+                human_players.append(player_data['nickname'])
+    
+    # Create interactive game instance with ordered players
     game = InteractivePerudoGame(human_players, ai_agents)
     
     # Store game state and AI agents
@@ -162,7 +268,7 @@ def home():
 
 @app.route('/create_room', methods=['POST'])
 def create_room_endpoint():
-    """Handle room creation form submission."""
+    """Handle room creation form submission with AI configuration."""
     nickname = request.form.get('nickname', '').strip()
     player_count_str = request.form.get('player_count', '4').strip()
     
@@ -176,9 +282,19 @@ def create_room_endpoint():
     except (ValueError, TypeError):
         return redirect(url_for('home'))
     
-    # Create room and get session
+    # Parse AI configurations
+    ai_configs = []
+    for i in range(1, player_count):  # AI slots = player_count - 1 (human host)
+        ai_type = request.form.get(f'ai_{i}_type', 'random')
+        ai_configs.append({
+            'type': ai_type,
+            'name': f'AI_Bot_{i}',
+            'is_ai': True
+        })
+    
+    # Create room with AI configurations
     try:
-        room_code, session_id = create_room(nickname, player_count)
+        room_code, session_id = create_room(nickname, player_count, ai_configs)
     except ValueError:
         # Invalid player count range (not 2-8)
         return redirect(url_for('home'))
@@ -239,13 +355,17 @@ def room_page(code):
     room_data = rooms[code]
     room_players = []
     
-    # Get player nicknames
-    for player_id in room_data['players']:
-        if player_id in players:
+    # Get player information from the new room structure
+    for player_entry in room_data['players']:
+        player_session_id = player_entry['session_id']
+        if player_session_id in players:
+            player_data = players[player_session_id]
             room_players.append({
-                'nickname': players[player_id]['nickname'],
-                'is_host': player_id == room_data['host'],
-                'session_id': player_id
+                'nickname': player_data['nickname'],
+                'is_host': player_session_id == room_data['host'],
+                'session_id': player_session_id,
+                'is_ai': player_data.get('is_ai', False),
+                'agent_type': player_data.get('ai_config', {}).get('type', 'human') if player_data.get('is_ai', False) else 'human'
             })
     
     return render_template('room.html', 
@@ -352,7 +472,12 @@ def submit_action():
         return jsonify({'error': 'Player not in room'}), 403
     
     # Find player index in game
-    player_nicknames = [players[pid]['nickname'] for pid in room_data['players']]
+    player_nicknames = []
+    for player_entry in room_data['players']:
+        player_session_id = player_entry['session_id']
+        if player_session_id in players:
+            player_nicknames.append(players[player_session_id]['nickname'])
+    
     try:
         player_index = player_nicknames.index(players[session_id]['nickname'])
     except ValueError:
@@ -377,6 +502,9 @@ def submit_action():
             
         elif action_type == 'exact':
             game.submit_exact_call()
+            
+        elif action_type == 'continue':
+            game.submit_continue(player_index)
             
         else:
             return jsonify({'error': 'Invalid action type'}), 400
@@ -412,7 +540,12 @@ def poll_game_state(code):
         return jsonify({'error': 'Player not in room'}), 403
     
     # Find player index
-    player_nicknames = [players[pid]['nickname'] for pid in room_data['players']]
+    player_nicknames = []
+    for player_entry in room_data['players']:
+        player_session_id = player_entry['session_id']
+        if player_session_id in players:
+            player_nicknames.append(players[player_session_id]['nickname'])
+    
     try:
         player_index = player_nicknames.index(players[session_id]['nickname'])
     except ValueError:
@@ -425,6 +558,7 @@ def poll_game_state(code):
     response = {
         'current_player': game.current_player,
         'is_your_turn': game.current_player == player_index,
+        'your_player_index': player_index,  # Add current user's player index
         'your_dice': obs['hand'],
         'current_bid': {
             'quantity': obs['current_bid'][0] if obs['current_bid'] else None,
@@ -448,7 +582,11 @@ def poll_game_state(code):
             }
             for i in range(game.get_player_count())
         ],
-        'round_history': obs.get('round_history', [])  # Include action history
+        'round_history': obs.get('round_history', []),  # Include action history
+        'round_end_state': game.is_in_round_end_state(),
+        'round_end_info': game.get_round_end_info(),
+        'ai_thinking': obs.get('ai_thinking', False),  # Include AI thinking status
+        'ai_thinking_player': obs.get('ai_thinking_player', None)  # Include which AI is thinking
     }
     
     return jsonify(response)

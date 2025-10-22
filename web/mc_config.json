@@ -1,0 +1,48 @@
+{
+    "_description": "Configuration file for MonteCarloAgent parameters",
+    "_documentation": {
+        "usage": "This file contains all configurable parameters for Monte Carlo agents used in the web interface",
+        "parameter_descriptions": {
+            "name": "Display name for the agent",
+            "n": "Number of Monte Carlo simulations to run per action evaluation",
+            "chunk_size": "Number of simulations to process in each batch (for performance optimization)",
+            "max_rounds": "Maximum number of rounds to simulate in each determinization",
+            "simulate_to_round_end": "Whether to simulate complete rounds or use heuristic evaluation",
+            "early_stop_margin": "Threshold for early stopping when an action is clearly inferior",
+            "weighted_sampling": "Enable weighted dice sampling based on game patterns",
+            "enable_parallel": "Enable parallel processing using multiple CPU cores",
+            "num_workers": "Number of worker processes for parallel execution (null = auto-detect)",
+            "enhanced_pruning": "Enable advanced action pruning with opponent modeling",
+            "variance_reduction": "Enable variance reduction techniques using control variates",
+            "betting_history_enabled": "Track and use betting history for decision making",
+            "player_trust_enabled": "Enable player trust tracking and learning",
+            "trust_learning_rate": "Learning rate for updating player trust parameters",
+            "history_memory_rounds": "Number of historical rounds to remember for analysis",
+            "bayesian_sampling": "Use Bayesian inference for more accurate dice sampling"
+        },
+        "performance_notes": {
+            "n": "Higher values = better decisions but slower computation. 100-500 recommended for web play",
+            "chunk_size": "8-16 works well for most systems. Larger values may improve performance on multi-core systems",
+            "max_rounds": "4-6 rounds usually sufficient. Higher values increase computation time significantly",
+            "enable_parallel": "Recommended for multi-core systems when n > 200",
+            "num_workers": "Leave null to auto-detect CPU cores. Set manually only if needed"
+        }
+    },
+    
+    "name": "MC_Agent",
+    "n": 200,
+    "chunk_size": 8,
+    "max_rounds": 4,
+    "simulate_to_round_end": true,
+    "early_stop_margin": 0.15,
+    "weighted_sampling": true,
+    "enable_parallel": true,
+    "num_workers": null,
+    "enhanced_pruning": true,
+    "variance_reduction": true,
+    "betting_history_enabled": true,
+    "player_trust_enabled": true,
+    "trust_learning_rate": 0.1,
+    "history_memory_rounds": 10,
+    "bayesian_sampling": true
+}

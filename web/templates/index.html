@@ -14,6 +14,10 @@
         h1 { color: #333; }
         h2 { color: #666; margin-bottom: 10px; }
         .instructions { text-align: left; margin: 20px 0; font-size: 14px; color: #666; }
+        .ai-config { margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border-left: 4px solid #6c757d; }
+        .ai-config h4 { margin: 0 0 10px 0; color: #495057; }
+        .ai-config select { width: 200px; }
+        .ai-slots { display: none; margin: 15px 0; }
     </style>
 </head>
 <body>
@@ -28,7 +32,7 @@
                     <input type="text" name="nickname" placeholder="Enter your nickname" required minlength="2" maxlength="20">
                 </div>
                 <div>
-                    <select name="player_count" required>
+                    <select name="player_count" id="player_count" required onchange="updateAISlots()">
                         <option value="">Select number of players</option>
                         <option value="2">2 Players</option>
                         <option value="3">3 Players</option>
@@ -39,6 +43,14 @@
                         <option value="8">8 Players</option>
                     </select>
                 </div>
+                
+                <div class="ai-slots" id="ai-slots">
+                    <h3 style="margin: 15px 0 10px 0; color: #495057;">Configure AI Players</h3>
+                    <div id="ai-config-container">
+                        <!-- AI configuration slots will be dynamically generated here -->
+                    </div>
+                </div>
+                
                 <div>
                     <button type="submit">Create Room</button>
                 </div>
@@ -70,5 +82,48 @@
             </ul>
         </div>
     </div>
+    
+    <script>
+        function updateAISlots() {
+            const playerCount = parseInt(document.getElementById('player_count').value);
+            const aiSlotsDiv = document.getElementById('ai-slots');
+            const aiConfigContainer = document.getElementById('ai-config-container');
+            
+            if (!playerCount || playerCount < 2) {
+                aiSlotsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Number of AI slots = total players - 1 human host
+            const aiSlots = playerCount - 1;
+            
+            // Clear existing AI configs
+            aiConfigContainer.innerHTML = '';
+            
+            // Create AI configuration for each slot
+            for (let i = 1; i <= aiSlots; i++) {
+                const aiConfig = document.createElement('div');
+                aiConfig.className = 'ai-config';
+                
+                aiConfig.innerHTML = `
+                    <h4>AI Player ${i}</h4>
+                    <select name="ai_${i}_type" required>
+                        <option value="random">Random Agent</option>
+                        <option value="baseline">Baseline Agent</option>
+                        <option value="mc">Monte Carlo Agent</option>
+                    </select>
+                `;
+                
+                aiConfigContainer.appendChild(aiConfig);
+            }
+            
+            aiSlotsDiv.style.display = 'block';
+        }
+        
+        // Initialize AI slots on page load for default selection
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAISlots();
+        });
+    </script>
 </body>
 </html>
