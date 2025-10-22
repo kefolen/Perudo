@@ -2,6 +2,9 @@
 numpy
 tqdm
 
+# web interface
+flask
+
 # testing
 pytest
 pytest-cov

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room {{ room_code }} - Perudo</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+        .container { text-align: center; }
+        .room-info { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .room-code { font-size: 2em; font-weight: bold; color: #007bff; margin: 10px 0; }
+        .players-section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .player-list { list-style: none; padding: 0; }
+        .player-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; margin: 5px 0; background-color: #f1f1f1; border-radius: 4px;
+        }
+        .player-name { font-weight: bold; }
+        .host-badge { 
+            background-color: #28a745; color: white; padding: 2px 8px; 
+            border-radius: 12px; font-size: 0.8em;
+        }
+        .current-player { background-color: #e3f2fd; border-left: 4px solid #2196f3; }
+        .game-status { 
+            margin: 20px 0; padding: 15px; background-color: #fff3cd; 
+            border: 1px solid #ffeaa7; border-radius: 4px;
+        }
+        .button-group { margin: 30px 0; }
+        button { 
+            padding: 12px 24px; margin: 10px; background-color: #007bff; 
+            color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;
+        }
+        button:hover { background-color: #0056b3; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #545b62; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .share-info { 
+            margin: 20px 0; padding: 15px; background-color: #d4edda; 
+            border: 1px solid #c3e6cb; border-radius: 4px;
+        }
+        .instructions { text-align: left; margin: 20px 0; font-size: 14px; color: #666; }
+        .waiting-message { color: #666; font-style: italic; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Game Room</h1>
+        
+        <div class="room-info">
+            <div>Room Code:</div>
+            <div class="room-code">{{ room_code }}</div>
+            <div class="share-info">
+                <strong>Share this code with friends to join the game!</strong>
+            </div>
+        </div>
+        
+        <div class="players-section">
+            <h2>Players in Room ({{ players|length }}/{{ max_players }})</h2>
+            {% if players %}
+                <ul class="player-list">
+                    {% for player in players %}
+                        <li class="player-item {% if player.session_id == current_player %}current-player{% endif %}">
+                            <div>
+                                <span class="player-name">{{ player.nickname }}</span>
+                                {% if player.is_host %}
+                                    <span class="host-badge">HOST</span>
+                                {% endif %}
+                                {% if player.session_id == current_player %}
+                                    <span style="color: #2196f3; font-weight: bold;">(You)</span>
+                                {% endif %}
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="waiting-message">No players in room yet.</p>
+            {% endif %}
+        </div>
+        
+        <div class="game-status">
+            {% if players|length == 0 %}
+                <p><strong>Empty room</strong></p>
+                <p>Waiting for players to join...</p>
+            {% elif players|length < max_players %}
+                <p><strong>Waiting for more players...</strong></p>
+                <p>{{ players|length }}/{{ max_players }} players joined. Share room code <strong>{{ room_code }}</strong> with friends!</p>
+                <p class="waiting-message">You can start the game now - empty slots will be filled with AI bots.</p>
+            {% else %}
+                <p><strong>Room is full!</strong></p>
+                <p>All {{ max_players }} player slots are filled. Ready to start the game!</p>
+            {% endif %}
+        </div>
+        
+        <div class="button-group">
+            {% if players|length >= 1 %}
+                {% for player in players %}
+                    {% if player.session_id == current_player and player.is_host %}
+                        <button onclick="startGame()">Start Game</button>
+                    {% endif %}
+                {% endfor %}
+                {% if not (players|selectattr('session_id', 'equalto', current_player)|selectattr('is_host')|list) %}
+                    <button disabled>Only host can start game</button>
+                {% endif %}
+            {% else %}
+                <button disabled>Waiting for Players...</button>
+            {% endif %}
+            <button class="secondary" onclick="leaveRoom()">Leave Room</button>
+            <button class="secondary" onclick="window.location.href='/'">Back to Home</button>
+        </div>
+        
+        <div class="instructions">
+            <h3>Next Steps:</h3>
+            <ul>
+                <li><strong>Wait:</strong> For another player to join using code {{ room_code }}</li>
+                <li><strong>Start:</strong> Game begins automatically with 2 players</li>
+                <li><strong>Play:</strong> Take turns making bids about dice quantities</li>
+                <li><strong>Win:</strong> Be the last player with dice remaining!</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        function startGame() {
+            // Make POST request to start the game
+            fetch('/start_game/{{ room_code }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    // Game started successfully, reload page to show game state
+                    window.location.reload();
+                } else {
+                    alert('Failed to start game. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting game:', error);
+                alert('Error starting game. Please try again.');
+            });
+        }
+        
+        function leaveRoom() {
+            if (confirm('Are you sure you want to leave this room?')) {
+                window.location.href = '/';
+            }
+        }
+        
+        // Auto-refresh page every 3 seconds to check for new players (simple polling)
+        setInterval(function() {
+            window.location.reload();
+        }, 3000);
+    </script>
+</body>
+</html>

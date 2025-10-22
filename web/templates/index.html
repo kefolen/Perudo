@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perudo - Liar's Dice Game</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .container { text-align: center; }
+        .form-section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        input[type="text"], input[type="number"], select { padding: 10px; margin: 5px; width: 220px; }
+        button { padding: 10px 20px; margin: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        h1 { color: #333; }
+        h2 { color: #666; margin-bottom: 10px; }
+        .instructions { text-align: left; margin: 20px 0; font-size: 14px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to Perudo</h1>
+        <p>The classic Liar's Dice game - now online!</p>
+        
+        <div class="form-section">
+            <h2>Create New Room</h2>
+            <form action="/create_room" method="POST">
+                <div>
+                    <input type="text" name="nickname" placeholder="Enter your nickname" required minlength="2" maxlength="20">
+                </div>
+                <div>
+                    <select name="player_count" required>
+                        <option value="">Select number of players</option>
+                        <option value="2">2 Players</option>
+                        <option value="3">3 Players</option>
+                        <option value="4" selected>4 Players</option>
+                        <option value="5">5 Players</option>
+                        <option value="6">6 Players</option>
+                        <option value="7">7 Players</option>
+                        <option value="8">8 Players</option>
+                    </select>
+                </div>
+                <div>
+                    <button type="submit">Create Room</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="form-section">
+            <h2>Join Existing Room</h2>
+            <form action="/join_room" method="POST">
+                <div>
+                    <input type="number" name="room_code" placeholder="4-digit room code" required min="1000" max="9999">
+                </div>
+                <div>
+                    <input type="text" name="nickname" placeholder="Enter your nickname" required minlength="2" maxlength="20">
+                </div>
+                <div>
+                    <button type="submit">Join Room</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="instructions">
+            <h3>How to Play:</h3>
+            <ul>
+                <li><strong>Create Room:</strong> Enter your nickname and get a 4-digit room code</li>
+                <li><strong>Join Room:</strong> Enter the room code and your nickname to join</li>
+                <li><strong>Game:</strong> Play Perudo against an AI bot</li>
+                <li><strong>Rules:</strong> Bid on dice quantities, call bluffs, ones are wild!</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
