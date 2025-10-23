@@ -518,8 +518,9 @@ def submit_action():
     except Exception as e:
         return jsonify({'error': f'Action failed: {str(e)}'}), 400
     
-    # Process bot turns after human action
-    game.process_ai_turns()
+    # Process bot turns after human action - BUT NOT during round end states
+    if not game.is_in_round_end_state():
+        game.process_ai_turns()
     
     return jsonify({'success': True, 'game_over': game.is_game_over()})
 
@@ -635,24 +636,20 @@ def stream_game_state(code):
         """Generate SSE updates for game state changes."""
         last_state = None
         state_changed = threading.Event()
+        listener_added = False
         
         # Add state change listener to game
         def on_state_change(game_instance):
             state_changed.set()
         
-        game.add_state_listener(on_state_change)
-        
-        while True:
-            try:
-                if code not in rooms or rooms[code].get('game_state') != game:
-                    # Room or game no longer exists
-                    break
-                
-                # Get current game state
+        try:
+            game.add_state_listener(on_state_change)
+            listener_added = True
+            
+            # Send initial state immediately
+            def build_current_state():
                 obs = game.get_observation(player_index)
-                
-                # Build current state
-                current_state = {
+                return {
                     'current_player': game.current_player,
                     'is_your_turn': game.current_player == player_index,
                     'your_player_index': player_index,
@@ -685,25 +682,64 @@ def stream_game_state(code):
                     'ai_thinking': obs.get('ai_thinking', False),
                     'ai_thinking_player': obs.get('ai_thinking_player', None)
                 }
-                
-                # Send update if state changed or this is first update
-                if current_state != last_state:
-                    yield f"data: {json.dumps(current_state)}\n\n"
-                    last_state = current_state.copy()
-                    
-                    # If game is over, close the stream
-                    if current_state['game_over']:
+            
+            # Send initial state
+            current_state = build_current_state()
+            yield f"data: {json.dumps(current_state)}\n\n"
+            last_state = current_state.copy()
+            
+            # If game is already over, close immediately
+            if current_state['game_over']:
+                return
+            
+            while True:
+                try:
+                    # Check if room/game still exists
+                    if code not in rooms or rooms[code].get('game_state') != game:
                         break
-                
-                # Brief pause to prevent excessive CPU usage
-                time.sleep(0.1)
-                
-            except Exception as e:
-                # Send error and close stream
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                break
+                    
+                    # Wait for state change with timeout
+                    if state_changed.wait(timeout=30):  # 30 second timeout for keepalive
+                        state_changed.clear()  # Reset the event
+                        
+                        # Get updated state
+                        current_state = build_current_state()
+                        
+                        # Send update if state actually changed
+                        if current_state != last_state:
+                            yield f"data: {json.dumps(current_state)}\n\n"
+                            last_state = current_state.copy()
+                            
+                            # If game is over, close the stream
+                            if current_state['game_over']:
+                                break
+                    else:
+                        # Timeout reached - send keepalive heartbeat
+                        yield f": keepalive\n\n"
+                        
+                except Exception as e:
+                    # Send error and close stream
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    break
+                    
+        except Exception as e:
+            yield f"data: {json.dumps({'error': f'Stream initialization failed: {str(e)}'})}\n\n"
+        finally:
+            # Clean up listener if it was added
+            if listener_added:
+                try:
+                    # Note: We can't easily remove listeners without modifying InteractivePerudoGame
+                    # For now, the listener will remain but become inactive when this function ends
+                    pass
+                except:
+                    pass
     
-    return Response(generate_updates(), mimetype='text/plain')
+    # Create response with proper SSE headers
+    response = Response(generate_updates(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Connection'] = 'keep-alive'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
 
 
 if __name__ == '__main__':

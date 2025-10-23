@@ -161,10 +161,8 @@ class PerudoSimulator:
                         # non-1's to non-1's: normal progression
                         if f > prev_face:
                             min_q = prev_qty  # Same quantity, higher face
-                        elif f == prev_face:
-                            min_q = prev_qty + 1  # Same face, higher quantity
                         else:
-                            continue  # Lower face not allowed for same quantity
+                            min_q = prev_qty + 1  # Same face, higher quantity
                 
                 # Generate valid quantities for this face
                 for q in range(min_q, cap_qty + 1):

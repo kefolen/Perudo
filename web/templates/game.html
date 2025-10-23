@@ -7,34 +7,40 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
+            max-width: none; /* Remove 1400px constraint */
+            margin: 0;
+            padding: 20px 40px; /* Increase horizontal padding */
             background-color: #f5f5f5;
+            min-height: 100vh;
         }
         
         .game-container {
             background: white;
-            padding: 20px;
+            padding: 30px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 1800px; /* Set reasonable maximum for very wide screens */
+            margin: 0 auto;
         }
         
         .game-content-wrapper {
             display: flex;
-            gap: 20px;
+            gap: 30px; /* Increase gap for better spacing */
             align-items: flex-start;
         }
         
         .main-game-content {
-            flex: 1;
-            min-width: 0;
+            flex: 1; /* 50% of available space */
+            min-width: 400px; /* Minimum width for game content */
         }
         
         .sidebar-history {
-            flex: 0 0 300px;
+            flex: 1; /* 50% of available space - equal to main content */
+            min-width: 400px; /* Equal minimum width for sidebar */
             position: sticky;
             top: 20px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
         
         .game-header {
@@ -224,6 +230,7 @@
             text-align: center;
             color: #856404;
             margin-bottom: 20px;
+            font-size: 24px;
         }
         
         .round-results {
@@ -238,16 +245,19 @@
             color: #dc3545;
             font-weight: bold;
             margin-bottom: 10px;
+            font-size: 18px;
         }
         
         .bid-info {
             color: #495057;
             margin-bottom: 10px;
+            font-size: 16px;
         }
         
         .actual-count {
             color: #28a745;
             font-weight: bold;
+            font-size: 16px;
         }
         
         .all-hands-display {
@@ -276,6 +286,7 @@
             font-weight: bold;
             min-width: 120px;
             margin-right: 15px;
+            font-size: 16px;
         }
         
         .player-hand-dice {
@@ -291,7 +302,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
             background-color: white;
         }
@@ -331,7 +342,7 @@
         
         .continue-status {
             margin-top: 10px;
-            font-size: 14px;
+            font-size: 16px;
             color: #495057;
         }
         
@@ -351,6 +362,168 @@
             0% { opacity: 1; }
             50% { opacity: 0.6; }
             100% { opacity: 1; }
+        }
+
+        /* MAPUTA warning label styles */
+        .maputa-warning {
+            margin: 15px 0;
+            padding: 12px 16px;
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            color: #856404;
+            font-weight: bold;
+            text-align: center;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* New styles for persistent round results display */
+        .persistent-round-results {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            display: none; /* Initially hidden */
+        }
+
+        .persistent-round-results.visible {
+            display: block;
+        }
+
+        .persistent-round-results h4 {
+            margin: 0 0 10px 0;
+            color: #856404;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .compact-round-info {
+            font-size: 12px;
+            line-height: 1.4;
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .compact-summary {
+            flex: 0 0 auto;
+            min-width: 150px;
+        }
+
+        .compact-loser {
+            color: #dc3545;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .compact-bid-result {
+            color: #495057;
+            margin-bottom: 5px;
+        }
+
+        .compact-hands-display {
+            flex: 1;
+            max-height: 200px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .compact-hands-column {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .compact-player-hand {
+            display: flex;
+            align-items: center;
+            margin: 3px 0;
+            font-size: 12px;
+        }
+
+        .compact-player-name {
+            font-weight: bold;
+            min-width: 100px;
+            margin-right: 12px;
+        }
+
+        .compact-dice {
+            display: flex;
+            gap: 4px;
+        }
+
+        .compact-die {
+            width: 24px;
+            height: 24px;
+            border: 1px solid #333;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            background-color: white;
+        }
+
+        .compact-die.highlighted {
+            border-color: #28a745;
+            background-color: #d4edda;
+            border-width: 2px;
+        }
+
+        /* Responsive design considerations */
+        @media (max-width: 1400px) {
+            .game-content-wrapper {
+                gap: 20px;
+            }
+            
+            .main-game-content {
+                flex: 1; /* Maintain 50/50 ratio on medium screens */
+                min-width: 350px; /* Slightly reduce minimum width */
+            }
+            
+            .sidebar-history {
+                flex: 1; /* Maintain 50/50 ratio on medium screens */
+                min-width: 350px; /* Equal minimum width */
+            }
+        }
+
+        @media (max-width: 1200px) {
+            body {
+                padding: 15px 20px;
+            }
+            
+            .main-game-content {
+                flex: 1; /* Keep 50/50 ratio on smaller screens */
+                min-width: 300px; /* Further reduce minimum width */
+            }
+            
+            .sidebar-history {
+                flex: 1; /* Keep 50/50 ratio on smaller screens */
+                min-width: 300px; /* Equal minimum width */
+            }
+        }
+
+        @media (max-width: 992px) {
+            .game-content-wrapper {
+                flex-direction: column;
+            }
+            
+            .sidebar-history {
+                flex: none;
+                width: 100%;
+                position: relative;
+                max-height: none;
+            }
+            
+            .persistent-round-results {
+                display: inline-block;
+                margin: 10px;
+                width: auto;
+            }
         }
     </style>
 </head>
@@ -382,43 +555,139 @@
         let userIsTyping = false;
         let focusedElement = null;
         let typingTimeout = null;
+        
+        // Add new variables for persistent round results
+        let lastRoundResults = null;
+        let autoAdvanceTimer = null;
 
         // Start real-time updates when page loads
         document.addEventListener('DOMContentLoaded', function() {
             startRealtimeUpdates();
         });
 
+        let currentEventSource = null;
+        let connectionRetries = 0;
+        let maxRetries = 5;
+        let retryDelay = 1000; // Start with 1 second
+        let fallbackToPolling = false;
+        let pollingInterval = null;
+
         function startRealtimeUpdates() {
-            const eventSource = new EventSource(`/stream/${roomCode}`);
+            if (fallbackToPolling) {
+                startPollingFallback();
+                return;
+            }
             
-            eventSource.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.error) {
-                        showMessage('Error: ' + data.error, 'error');
-                        return;
+            try {
+                currentEventSource = new EventSource(`/stream/${roomCode}`);
+                
+                currentEventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.error) {
+                            showMessage('Error: ' + data.error, 'error');
+                            // If we get a server error, try fallback
+                            if (data.error.includes('Stream initialization failed') || data.error.includes('Room not found')) {
+                                handleConnectionFailure();
+                            }
+                            return;
+                        }
+                        
+                        // Reset retry counter on successful message
+                        connectionRetries = 0;
+                        retryDelay = 1000;
+                        
+                        gameState = data;
+                        updateGameDisplay();
+                        
+                        if (data.game_over) {
+                            currentEventSource.close();
+                            currentEventSource = null;
+                        }
+                    } catch (e) {
+                        showMessage('Error parsing game state: ' + e.message, 'error');
                     }
-                    
+                };
+                
+                currentEventSource.onerror = function(event) {
+                    showMessage('Connection lost, attempting to reconnect...', 'warning');
+                    handleConnectionFailure();
+                };
+                
+                currentEventSource.onopen = function(event) {
+                    showMessage('Connected to game', 'success');
+                    connectionRetries = 0;
+                    retryDelay = 1000;
+                };
+                
+            } catch (e) {
+                showMessage('Failed to establish connection: ' + e.message, 'error');
+                handleConnectionFailure();
+            }
+        }
+        
+        function handleConnectionFailure() {
+            if (currentEventSource) {
+                currentEventSource.close();
+                currentEventSource = null;
+            }
+            
+            connectionRetries++;
+            
+            if (connectionRetries >= maxRetries) {
+                showMessage('SSE connection failed. Switching to polling mode...', 'warning');
+                fallbackToPolling = true;
+                startPollingFallback();
+                return;
+            }
+            
+            // Exponential backoff with jitter
+            const jitter = Math.random() * 1000;
+            const delay = Math.min(retryDelay + jitter, 10000);
+            
+            showMessage(`Reconnection attempt ${connectionRetries}/${maxRetries} in ${Math.round(delay/1000)}s...`, 'info');
+            
+            setTimeout(() => {
+                retryDelay *= 2; // Exponential backoff
+                startRealtimeUpdates();
+            }, delay);
+        }
+        
+        function startPollingFallback() {
+            showMessage('Using polling mode for updates', 'info');
+            
+            // Clear any existing polling
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
+            // Start polling every 2 seconds
+            pollingInterval = setInterval(pollGameState, 2000);
+            
+            // Poll immediately
+            pollGameState();
+        }
+        
+        async function pollGameState() {
+            try {
+                const response = await fetch(`/poll/${roomCode}`);
+                const data = await response.json();
+                
+                if (response.ok) {
                     gameState = data;
                     updateGameDisplay();
                     
-                    if (data.game_over) {
-                        eventSource.close();
+                    if (data.game_over && pollingInterval) {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
                     }
-                } catch (e) {
-                    showMessage('Error parsing game state: ' + e.message, 'error');
+                } else {
+                    showMessage('Polling error: ' + (data.error || 'Unknown error'), 'warning');
                 }
-            };
-            
-            eventSource.onerror = function(event) {
-                showMessage('Connection lost, attempting to reconnect...', 'warning');
-                // EventSource will automatically attempt to reconnect
-            };
-            
-            eventSource.onopen = function(event) {
-                showMessage('Connected to game', 'success');
-            };
+            } catch (error) {
+                showMessage('Connection error: ' + error.message, 'warning');
+            }
         }
 
         function stopRealtimeUpdates() {
@@ -429,7 +698,7 @@
         // Add event listeners to track user interaction with bid fields
         function setupBidFieldListeners() {
             const quantityInput = document.getElementById('bid-quantity');
-            const faceSelect = document.getElementById('bid-face');
+            const faceInput = document.getElementById('bid-face');
             
             if (quantityInput) {
                 quantityInput.addEventListener('focus', function() {
@@ -453,22 +722,22 @@
                 });
             }
             
-            if (faceSelect) {
-                faceSelect.addEventListener('focus', function() {
+            if (faceInput) {
+                faceInput.addEventListener('focus', function() {
                     focusedElement = this;
                     userIsTyping = true;
                 });
                 
-                faceSelect.addEventListener('change', function() {
+                faceInput.addEventListener('input', function() {
                     userIsTyping = true;
                     // Reset timeout
                     if (typingTimeout) clearTimeout(typingTimeout);
                     typingTimeout = setTimeout(function() {
                         userIsTyping = false;
-                    }, 500); // Shorter timeout for select changes
+                    }, 1000); // Same timeout as quantity input
                 });
                 
-                faceSelect.addEventListener('blur', function() {
+                faceInput.addEventListener('blur', function() {
                     userIsTyping = false;
                     focusedElement = null;
                     if (typingTimeout) clearTimeout(typingTimeout);
@@ -477,39 +746,291 @@
         }
 
         function updateGameDisplay() {
-            if (!gameState) return;
+            if (!gameState) {
+                return;
+            }
 
             // Skip update if user is actively typing in bid fields
             if (userIsTyping) {
                 return;
             }
 
-            const container = document.getElementById('game-state');
+            // Check for round end state and handle auto-advance
+            if (gameState.round_end_state) {
+                // Store round results for persistent display
+                lastRoundResults = gameState.round_end_info;
+                
+                // Auto-advance after showing results briefly (no continue button needed)
+                if (!autoAdvanceTimer) {
+                    autoAdvanceTimer = setTimeout(() => {
+                        if (gameState.round_end_state) {
+                            autoSubmitContinue();
+                        }
+                        autoAdvanceTimer = null;
+                    }, 3000); // 3 seconds to view results
+                }
+                
+                // Display normal game state with results in sidebar
+                displayNormalGameState();
+                updatePersistentRoundResults();
+            } else {
+                // Clear any pending auto-advance timer
+                if (autoAdvanceTimer) {
+                    clearTimeout(autoAdvanceTimer);
+                    autoAdvanceTimer = null;
+                }
+                
+                // Normal game state
+                displayNormalGameState();
+                updatePersistentRoundResults();
+            }
+        }
+
+        function updatePersistentRoundResults() {
+            const sidebarHistoryContainer = document.querySelector('.sidebar-history');
             
-            if (gameState.game_over) {
-                container.innerHTML = `
-                    <div class="game-over">
-                        <h2>Game Over!</h2>
-                        <p>Winner: ${gameState.winner !== null ? gameState.players[gameState.winner].name : 'No winner'}</p>
-                        <button onclick="window.location.href='/'">To Main Page</button>
+            if (!sidebarHistoryContainer) {
+                return; // Sidebar not yet created
+            }
+            
+            let resultsContainer = document.querySelector('.persistent-round-results');
+            
+            if (!resultsContainer && lastRoundResults) {
+                // Create the persistent results container in sidebar
+                const resultsHtml = `
+                    <div class="persistent-round-results">
+                        <h4>Last Round Result</h4>
+                        <div class="compact-round-info"></div>
                     </div>
                 `;
-                return;
+                sidebarHistoryContainer.insertAdjacentHTML('afterbegin', resultsHtml);
+                resultsContainer = document.querySelector('.persistent-round-results');
             }
-
-            // Check if in round end state
-            if (gameState.round_end_state && gameState.round_end_info) {
-                displayRoundEndState();
-                return;
+            
+            if (!resultsContainer) return;
+            
+            const infoElement = resultsContainer.querySelector('.compact-round-info');
+            
+            if (lastRoundResults && infoElement) {
+                resultsContainer.classList.add('visible');
+                
+                const bidFace = lastRoundResults.last_bid ? lastRoundResults.last_bid[1] : null;
+                const bidQuantity = lastRoundResults.last_bid ? lastRoundResults.last_bid[0] : null;
+                const actualCount = lastRoundResults.actual_count || 0;
+                
+                infoElement.innerHTML = `
+                    <div class="compact-summary">
+                        <div class="compact-loser">${lastRoundResults.loser_name} lost a die</div>
+                        <div class="compact-bid-result">
+                            Bid: ${bidQuantity} × ${bidFace}<br>
+                            Actual: ${actualCount} dice
+                        </div>
+                    </div>
+                    <div class="compact-hands-display">
+                        <div class="compact-hands-column">
+                            ${gameState.players.slice(0, 4).map((player, index) => `
+                                <div class="compact-player-hand">
+                                    <div class="compact-player-name">${player.name}</div>
+                                    <div class="compact-dice">
+                                        ${lastRoundResults.all_hands && lastRoundResults.all_hands[index] ? 
+                                            lastRoundResults.all_hands[index].map(die => {
+                                                const shouldHighlight = bidFace && ((die == bidFace) || (die == 1 && bidFace != 1));
+                                                return `<div class="compact-die${shouldHighlight ? ' highlighted' : ''}">${die}</div>`;
+                                            }).join('') : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="compact-hands-column">
+                            ${gameState.players.slice(4).map((player, index) => {
+                                const actualIndex = index + 4; // Adjust index for players 5+
+                                return `
+                                    <div class="compact-player-hand">
+                                        <div class="compact-player-name">${player.name}</div>
+                                        <div class="compact-dice">
+                                            ${lastRoundResults.all_hands && lastRoundResults.all_hands[actualIndex] ? 
+                                                lastRoundResults.all_hands[actualIndex].map(die => {
+                                                    const shouldHighlight = bidFace && ((die == bidFace) || (die == 1 && bidFace != 1));
+                                                    return `<div class="compact-die${shouldHighlight ? ' highlighted' : ''}">${die}</div>`;
+                                                }).join('') : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (resultsContainer) {
+                resultsContainer.classList.remove('visible');
             }
+        }
 
-            // Preserve input field values before updating
-            const quantityInput = document.getElementById('bid-quantity');
-            const faceSelect = document.getElementById('bid-face');
-            const savedQuantity = quantityInput ? quantityInput.value : '';
-            const savedFace = faceSelect ? faceSelect.value : '1';
 
-            // Build history sidebar content - always show the history area
+        function displayNormalGameState() {
+            // Modified version of existing displayNormalGameState function
+            // Remove round-end specific display logic since it's handled in sidebar
+            
+            const container = document.getElementById('game-state');
+            
+            let mainHtml = '';
+            
+            if (gameState.game_over) {
+                mainHtml = `<div class="game-over">
+                    <h2>Game Over!</h2>
+                    <p>Winner: ${gameState.winner !== null ? gameState.players[gameState.winner].name : 'No winner'}</p>
+                    <button onclick="window.location.href='/'">To Main Page</button>
+                </div>`;
+            } else {
+                // Preserve input field values before updating
+                const quantityInput = document.getElementById('bid-quantity');
+                const faceSelect = document.getElementById('bid-face');
+                const savedQuantity = quantityInput ? quantityInput.value : '';
+                const savedFace = faceSelect ? faceSelect.value : '1';
+
+                // Your dice
+                mainHtml += `
+                    <div class="current-bid">
+                        <h3>Your Dice</h3>
+                        <div class="dice-display">
+                            ${gameState.your_dice.map(die => `<div class="die">${die}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+
+                // Current bid
+                if (gameState.current_bid) {
+                    mainHtml += `
+                        <div class="current-bid">
+                            <h3>Current Bid</h3>
+                            <p>${gameState.current_bid.quantity} × ${gameState.current_bid.face}</p>
+                        </div>
+                    `;
+                } else {
+                    mainHtml += `
+                        <div class="current-bid">
+                            <h3>Current Bid</h3>
+                            <p>No bid yet - first player to bid!</p>
+                        </div>
+                    `;
+                }
+
+                // Players status
+                mainHtml += `
+                    <div class="players-status">
+                        <h3>Players</h3>
+                        ${gameState.players.map((player, index) => `
+                            <div class="player ${index === gameState.current_player ? 'current' : ''} ${player.is_ai ? 'ai' : ''}">
+                                <span>${player.name} ${player.is_ai ? '(AI)' : ''}</span>
+                                <span>Dice: ${player.dice_count}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                // Calculate total dice count for max quantity validation
+                const totalDice = gameState.players.reduce((sum, player) => sum + player.dice_count, 0);
+
+                // Actions
+                if (gameState.is_your_turn) {
+                    // Check for MAPUTA condition and create MAPUTA label
+                    let maputaLabel = '';
+                    if (gameState.maputa_active) {
+                        const restrictedFace = gameState.maputa_restrict_face;
+                        if (restrictedFace) {
+                            maputaLabel = `
+                                <div class="maputa-warning">
+                                    ⚠️ MAPUTA ACTIVE: Only face ${restrictedFace} bids allowed this round
+                                </div>
+                            `;
+                        } else {
+                            maputaLabel = `
+                                <div class="maputa-warning">
+                                    ⚠️ MAPUTA ACTIVE: First bid will restrict face for all players this round
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                    mainHtml += `
+                        <div class="actions">
+                            <h3>Your Turn - Choose Action</h3>
+                            ${maputaLabel}
+                            
+                            <div class="action-form">
+                                <h4>Make Bid</h4>
+                                <input type="number" id="bid-quantity" min="1" max="${totalDice}" placeholder="Quantity" value="${savedQuantity}">
+                                <input type="number" id="bid-face" min="1" max="6" placeholder="Face (1-6)" value="${savedFace}">
+                                <button onclick="submitBid()">Bid</button>
+                            </div>
+
+                            ${gameState.current_bid ? `
+                                <div class="action-form">
+                                    <h4>Challenge Bid</h4>
+                                    <button class="call-btn" onclick="submitCall()">Call (Challenge)</button>
+                                </div>
+
+                                <div class="action-form">
+                                    <h4>Exact Call</h4>
+                                    <button class="exact-btn" onclick="submitExact()">Exact</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    const currentPlayerName = gameState.players[gameState.current_player]?.name || 'Unknown';
+                    const currentPlayer = gameState.players[gameState.current_player];
+                    
+                    // Check if AI is thinking
+                    let waitingMessage = `Waiting for ${currentPlayerName}...`;
+                    if (gameState.ai_thinking && 
+                        gameState.ai_thinking_player === gameState.current_player && 
+                        currentPlayer?.is_ai) {
+                        waitingMessage = `${currentPlayerName} is thinking...`;
+                    }
+                    
+                    mainHtml += `
+                        <div class="actions">
+                            <h3 id="waiting-message">${waitingMessage}</h3>
+                            ${gameState.ai_thinking && gameState.ai_thinking_player === gameState.current_player && currentPlayer?.is_ai ? 
+                                '<div class="ai-thinking-indicator">🤖 Processing turn...</div>' : ''}
+                        </div>
+                    `;
+                }
+            }
+            
+            // Build history HTML
+            let historyHtml = buildHistoryHtml();
+            
+            // Preserve focus information before updating
+            const wasFocused = focusedElement && (focusedElement.id === 'bid-quantity' || focusedElement.id === 'bid-face');
+            const focusedId = wasFocused ? focusedElement.id : null;
+
+            // Combine into two-column layout
+            container.innerHTML = `
+                <div class="game-content-wrapper">
+                    <div class="main-game-content">
+                        ${mainHtml}
+                    </div>
+                    <div class="sidebar-history">
+                        ${historyHtml}
+                    </div>
+                </div>
+            `;
+            
+            setupBidFieldListeners();
+            
+            // Restore focus if user was previously focused on a bid field
+            if (focusedId && !userIsTyping) {
+                const elementToFocus = document.getElementById(focusedId);
+                if (elementToFocus) {
+                    elementToFocus.focus();
+                    focusedElement = elementToFocus;
+                }
+            }
+        }
+
+        function buildHistoryHtml() {
+            // Build history sidebar content
             let historyHtml = '';
             if (gameState.round_history && gameState.round_history.length > 0) {
                 historyHtml = `
@@ -540,133 +1061,17 @@
                     </div>
                 `;
             }
+            return historyHtml;
+        }
 
-            // Build main content
-            let mainHtml = '';
+        async function autoSubmitContinue() {
+            // Automatically submit continue for current player if they're human
+            const currentPlayerIndex = getCurrentPlayerIndex();
+            const isHumanPlayer = currentPlayerIndex < gameState.players.length && 
+                                 !gameState.players[currentPlayerIndex].is_ai;
             
-            // Your dice
-            mainHtml += `
-                <div class="current-bid">
-                    <h3>Your Dice</h3>
-                    <div class="dice-display">
-                        ${gameState.your_dice.map(die => `<div class="die">${die}</div>`).join('')}
-                    </div>
-                </div>
-            `;
-
-            // Current bid
-            if (gameState.current_bid) {
-                mainHtml += `
-                    <div class="current-bid">
-                        <h3>Current Bid</h3>
-                        <p>${gameState.current_bid.quantity} × ${gameState.current_bid.face}</p>
-                    </div>
-                `;
-            } else {
-                mainHtml += `
-                    <div class="current-bid">
-                        <h3>Current Bid</h3>
-                        <p>No bid yet - first player to bid!</p>
-                    </div>
-                `;
-            }
-
-            // Players status
-            mainHtml += `
-                <div class="players-status">
-                    <h3>Players</h3>
-                    ${gameState.players.map((player, index) => `
-                        <div class="player ${index === gameState.current_player ? 'current' : ''} ${player.is_ai ? 'ai' : ''}">
-                            <span>${player.name} ${player.is_ai ? '(AI)' : ''}</span>
-                            <span>Dice: ${player.dice_count}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-
-            // Calculate total dice count for max quantity validation
-            const totalDice = gameState.players.reduce((sum, player) => sum + player.dice_count, 0);
-
-            // Actions
-            if (gameState.is_your_turn) {
-                mainHtml += `
-                    <div class="actions">
-                        <h3>Your Turn - Choose Action</h3>
-                        
-                        <div class="action-form">
-                            <h4>Make Bid</h4>
-                            <input type="number" id="bid-quantity" min="1" max="${totalDice}" placeholder="Quantity" value="${savedQuantity}">
-                            <select id="bid-face">
-                                <option value="1" ${savedFace === '1' ? 'selected' : ''}>1 (Wild)</option>
-                                <option value="2" ${savedFace === '2' ? 'selected' : ''}>2</option>
-                                <option value="3" ${savedFace === '3' ? 'selected' : ''}>3</option>
-                                <option value="4" ${savedFace === '4' ? 'selected' : ''}>4</option>
-                                <option value="5" ${savedFace === '5' ? 'selected' : ''}>5</option>
-                                <option value="6" ${savedFace === '6' ? 'selected' : ''}>6</option>
-                            </select>
-                            <button onclick="submitBid()">Bid</button>
-                        </div>
-
-                        ${gameState.current_bid ? `
-                            <div class="action-form">
-                                <h4>Challenge Bid</h4>
-                                <button class="call-btn" onclick="submitCall()">Call (Challenge)</button>
-                            </div>
-
-                            <div class="action-form">
-                                <h4>Exact Call</h4>
-                                <button class="exact-btn" onclick="submitExact()">Exact</button>
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            } else {
-                const currentPlayerName = gameState.players[gameState.current_player]?.name || 'Unknown';
-                const currentPlayer = gameState.players[gameState.current_player];
-                
-                // Check if AI is thinking
-                let waitingMessage = `Waiting for ${currentPlayerName}...`;
-                if (gameState.ai_thinking && 
-                    gameState.ai_thinking_player === gameState.current_player && 
-                    currentPlayer?.is_ai) {
-                    waitingMessage = `${currentPlayerName} is thinking...`;
-                }
-                
-                mainHtml += `
-                    <div class="actions">
-                        <h3 id="waiting-message">${waitingMessage}</h3>
-                        ${gameState.ai_thinking && gameState.ai_thinking_player === gameState.current_player && currentPlayer?.is_ai ? 
-                            '<div class="ai-thinking-indicator">🤖 Processing turn...</div>' : ''}
-                    </div>
-                `;
-            }
-
-            // Preserve focus information before updating
-            const wasFocused = focusedElement && (focusedElement.id === 'bid-quantity' || focusedElement.id === 'bid-face');
-            const focusedId = wasFocused ? focusedElement.id : null;
-
-            // Combine into two-column layout
-            container.innerHTML = `
-                <div class="game-content-wrapper">
-                    <div class="main-game-content">
-                        ${mainHtml}
-                    </div>
-                    <div class="sidebar-history">
-                        ${historyHtml}
-                    </div>
-                </div>
-            `;
-            
-            // Setup event listeners for bid fields after HTML update
-            setupBidFieldListeners();
-            
-            // Restore focus if user was previously focused on a bid field
-            if (focusedId && !userIsTyping) {
-                const elementToFocus = document.getElementById(focusedId);
-                if (elementToFocus) {
-                    elementToFocus.focus();
-                    focusedElement = elementToFocus;
-                }
+            if (isHumanPlayer) {
+                await submitAction('continue');
             }
         }
 
@@ -676,6 +1081,11 @@
 
             if (!quantity || quantity < 1) {
                 showMessage('Please enter a valid quantity', 'error');
+                return;
+            }
+
+            if (!face || isNaN(face) || face < 1 || face > 6) {
+                showMessage('Please enter a valid face value (1-6)', 'error');
                 return;
             }
 

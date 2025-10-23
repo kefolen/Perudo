@@ -16,7 +16,7 @@ class InteractivePerudoGame:
     Maintains game state and provides methods for web interface.
     """
     
-    def __init__(self, players, ai_agents=None, auto_continue_delay=3):
+    def __init__(self, players, ai_agents=None, auto_continue_delay=2):
         """
         Initialize interactive game.
         
@@ -78,6 +78,8 @@ class InteractivePerudoGame:
         if len(alive_players) <= 1:
             self.game_over = True
             self.winner = alive_players[0] if alive_players else None
+            # Notify listeners of game over state
+            self._notify_state_change()
             return
             
         # In Perudo, the player who lost a die starts the next round
@@ -103,6 +105,9 @@ class InteractivePerudoGame:
         self.current_bid_maker = None
         self.first_bid_by = None
         self.round_history = []  # Reset action history for new round
+        
+        # Notify listeners of new round state
+        self._notify_state_change()
     
     def get_observation(self, player_index):
         """Get game observation for a specific player."""
@@ -341,6 +346,9 @@ class InteractivePerudoGame:
         # Mark this human player as having continued
         self.human_continue_status[player_index] = True
         
+        # Notify listeners of continue status change
+        self._notify_state_change()
+        
         # Check if all human players have continued
         if all(self.human_continue_status.values()):
             self._continue_after_round_end()
@@ -372,6 +380,10 @@ class InteractivePerudoGame:
             self._start_new_round()
             # Notify listeners of state change
             self._notify_state_change()
+            
+            # Resume AI processing if current player is AI
+            if not self.is_human_player(self.current_player):
+                self.process_ai_turns()
     
     def is_in_round_end_state(self):
         """Check if currently in round end state."""
@@ -411,7 +423,8 @@ class InteractivePerudoGame:
         def process_ai_turns_async():
             """Process AI turns in background thread with immediate state updates."""
             while (not self.is_game_over() and 
-                   not self.is_human_player(self.current_player)):
+                   not self.is_human_player(self.current_player) and
+                   not self.round_end_state):  # ADD THIS CHECK - stop during round end states
                 
                 ai_index = self.current_player - len(self.players)
                 if ai_index >= len(self.ai_agents):
@@ -446,6 +459,10 @@ class InteractivePerudoGame:
                         self.submit_call()
                     elif action[0] == 'exact':
                         self.submit_exact_call()
+                    
+                    # CHECK AGAIN after action - round might have ended
+                    if self.round_end_state:
+                        break
                         
                 finally:
                     # Clear AI thinking status and notify
