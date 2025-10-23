@@ -135,15 +135,40 @@ class PerudoSimulator:
 
     def legal_bids_after(self, current_bid, cap_qty):
         if current_bid is None:
-            min_q, min_f = 1, 1
+            # First bet can be any valid bid
+            for q in range(1, cap_qty + 1):
+                for f in range(1, 7):
+                    yield (q, f)
         else:
-            min_q, min_f = current_bid
-        for q in range(min_q, cap_qty + 1):
+            prev_qty, prev_face = current_bid
+            
+            # Handle transitions involving wild 1's
             for f in range(1, 7):
-                if current_bid is not None:
-                    if q == min_q and f <= min_f:
-                        continue
-                yield (q, f)
+                if f == 1:
+                    # Betting on 1's
+                    if prev_face == 1:
+                        # 1's to 1's: normal progression
+                        min_q = prev_qty + 1
+                    else:
+                        # non-1's to 1's: minimum is ceiling(prev_qty / 2)
+                        min_q = math.ceil(prev_qty / 2)
+                else:
+                    # Betting on non-1's
+                    if prev_face == 1:
+                        # 1's to non-1's: minimum is 2 * prev_qty + 1
+                        min_q = 2 * prev_qty + 1
+                    else:
+                        # non-1's to non-1's: normal progression
+                        if f > prev_face:
+                            min_q = prev_qty  # Same quantity, higher face
+                        elif f == prev_face:
+                            min_q = prev_qty + 1  # Same face, higher quantity
+                        else:
+                            continue  # Lower face not allowed for same quantity
+                
+                # Generate valid quantities for this face
+                for q in range(min_q, cap_qty + 1):
+                    yield (q, f)
 
     def legal_actions(self, state, current_bid, maputa_restrict_face=None):
         actions = []

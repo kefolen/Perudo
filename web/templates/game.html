@@ -377,46 +377,112 @@
         const roomCode = config.roomCode;
         const sessionId = config.sessionId;
         let gameState = null;
-        let pollInterval = null;
+        
+        // Track user interaction with bid fields to prevent interruptions
+        let userIsTyping = false;
+        let focusedElement = null;
+        let typingTimeout = null;
 
-        // Start polling when page loads
+        // Start real-time updates when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            startPolling();
+            startRealtimeUpdates();
         });
 
-        function startPolling() {
-            pollGameState();
-            pollInterval = setInterval(pollGameState, 2000); // Poll every 2 seconds
-        }
-
-        function stopPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
-        }
-
-        async function pollGameState() {
-            try {
-                const response = await fetch(`/poll/${roomCode}`);
-                const data = await response.json();
-                
-                if (response.ok) {
+        function startRealtimeUpdates() {
+            const eventSource = new EventSource(`/stream/${roomCode}`);
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.error) {
+                        showMessage('Error: ' + data.error, 'error');
+                        return;
+                    }
+                    
                     gameState = data;
                     updateGameDisplay();
+                    
                     if (data.game_over) {
-                        stopPolling();
+                        eventSource.close();
                     }
-                } else {
-                    showMessage(data.error || 'Failed to get game state', 'error');
+                } catch (e) {
+                    showMessage('Error parsing game state: ' + e.message, 'error');
                 }
-            } catch (error) {
-                showMessage('Connection error: ' + error.message, 'error');
+            };
+            
+            eventSource.onerror = function(event) {
+                showMessage('Connection lost, attempting to reconnect...', 'warning');
+                // EventSource will automatically attempt to reconnect
+            };
+            
+            eventSource.onopen = function(event) {
+                showMessage('Connected to game', 'success');
+            };
+        }
+
+        function stopRealtimeUpdates() {
+            // EventSource will be closed automatically when game ends
+        }
+
+
+        // Add event listeners to track user interaction with bid fields
+        function setupBidFieldListeners() {
+            const quantityInput = document.getElementById('bid-quantity');
+            const faceSelect = document.getElementById('bid-face');
+            
+            if (quantityInput) {
+                quantityInput.addEventListener('focus', function() {
+                    focusedElement = this;
+                    userIsTyping = true;
+                });
+                
+                quantityInput.addEventListener('input', function() {
+                    userIsTyping = true;
+                    // Reset timeout - user is still typing
+                    if (typingTimeout) clearTimeout(typingTimeout);
+                    typingTimeout = setTimeout(function() {
+                        userIsTyping = false;
+                    }, 1000); // Stop considering "typing" after 1 second of inactivity
+                });
+                
+                quantityInput.addEventListener('blur', function() {
+                    userIsTyping = false;
+                    focusedElement = null;
+                    if (typingTimeout) clearTimeout(typingTimeout);
+                });
+            }
+            
+            if (faceSelect) {
+                faceSelect.addEventListener('focus', function() {
+                    focusedElement = this;
+                    userIsTyping = true;
+                });
+                
+                faceSelect.addEventListener('change', function() {
+                    userIsTyping = true;
+                    // Reset timeout
+                    if (typingTimeout) clearTimeout(typingTimeout);
+                    typingTimeout = setTimeout(function() {
+                        userIsTyping = false;
+                    }, 500); // Shorter timeout for select changes
+                });
+                
+                faceSelect.addEventListener('blur', function() {
+                    userIsTyping = false;
+                    focusedElement = null;
+                    if (typingTimeout) clearTimeout(typingTimeout);
+                });
             }
         }
 
         function updateGameDisplay() {
             if (!gameState) return;
+
+            // Skip update if user is actively typing in bid fields
+            if (userIsTyping) {
+                return;
+            }
 
             const container = document.getElementById('game-state');
             
@@ -575,6 +641,10 @@
                 `;
             }
 
+            // Preserve focus information before updating
+            const wasFocused = focusedElement && (focusedElement.id === 'bid-quantity' || focusedElement.id === 'bid-face');
+            const focusedId = wasFocused ? focusedElement.id : null;
+
             // Combine into two-column layout
             container.innerHTML = `
                 <div class="game-content-wrapper">
@@ -586,6 +656,18 @@
                     </div>
                 </div>
             `;
+            
+            // Setup event listeners for bid fields after HTML update
+            setupBidFieldListeners();
+            
+            // Restore focus if user was previously focused on a bid field
+            if (focusedId && !userIsTyping) {
+                const elementToFocus = document.getElementById(focusedId);
+                if (elementToFocus) {
+                    elementToFocus.focus();
+                    focusedElement = elementToFocus;
+                }
+            }
         }
 
         async function submitBid() {
@@ -631,8 +713,8 @@
                                     ${roundInfo.all_hands[index] ? roundInfo.all_hands[index].map(die => {
                                         // Highlight dice that match the last bid value
                                         // Ones are wild, so they count for any bid face except when bidding ones
-                                        const bidFace = roundInfo.last_bid[1];
-                                        const shouldHighlight = (die == bidFace) || (die == 1 && bidFace != 1);
+                                        const bidFace = roundInfo.last_bid ? roundInfo.last_bid[1] : null;
+                                        const shouldHighlight = bidFace && ((die == bidFace) || (die == 1 && bidFace != 1));
                                         const highlightClass = shouldHighlight ? ' highlighted' : '';
                                         return `<div class="hand-die${highlightClass}">${die}</div>`;
                                     }).join('') : ''}
@@ -736,8 +818,7 @@
 
                 if (response.ok) {
                     showMessage('Action submitted successfully', 'info');
-                    // Poll immediately to get updated state
-                    setTimeout(pollGameState, 100);
+                    // State will update automatically via SSE
                 } else {
                     showMessage(data.error || 'Action failed', 'error');
                 }
@@ -745,6 +826,7 @@
                 showMessage('Connection error: ' + error.message, 'error');
             }
         }
+
 
         function showMessage(message, type) {
             const messageDiv = document.getElementById('status-message');
@@ -759,7 +841,7 @@
         }
 
         // Cleanup on page unload
-        window.addEventListener('beforeunload', stopPolling);
+        window.addEventListener('beforeunload', stopRealtimeUpdates);
     </script>
 </body>
 </html>

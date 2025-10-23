@@ -16,17 +16,20 @@ class InteractivePerudoGame:
     Maintains game state and provides methods for web interface.
     """
     
-    def __init__(self, players, ai_agents=None):
+    def __init__(self, players, ai_agents=None, auto_continue_delay=3):
         """
         Initialize interactive game.
         
         Args:
             players: List of player names (human players)
             ai_agents: List of AI agent instances for remaining slots
+            auto_continue_delay: Seconds to wait before auto-continuing after round end
         """
         self.players = players
         self.ai_agents = ai_agents or []
         self.total_players = len(players) + len(self.ai_agents)
+        self.auto_continue_delay = auto_continue_delay
+        self.auto_continue_timer = None
         
         # Initialize simulator
         self.simulator = PerudoSimulator(num_players=self.total_players)
@@ -56,6 +59,9 @@ class InteractivePerudoGame:
         self.ai_thinking = False  # True when an AI is actively processing their turn
         self.ai_thinking_player = None  # Index of the AI player that is thinking
         
+        # State change listeners for real-time updates
+        self.state_listeners = []  # List of callback functions for state changes
+        
         # Start new round
         self._start_new_round()
     
@@ -74,9 +80,20 @@ class InteractivePerudoGame:
             self.winner = alive_players[0] if alive_players else None
             return
             
-        # Find valid starting player
-        while self.current_player not in alive_players:
-            self.current_player = self.simulator.next_player_idx(self.current_player, self.state['dice_counts'])
+        # In Perudo, the player who lost a die starts the next round
+        # BUT: if they're eliminated, the next alive player starts instead
+        if (self.current_player >= self.total_players or self.current_player < 0 or 
+            self.state['dice_counts'][self.current_player] == 0):
+            # Find the next alive player starting from the loser's position
+            start_search = self.current_player if (0 <= self.current_player < self.total_players) else 0
+            for i in range(self.total_players):
+                candidate = (start_search + i) % self.total_players
+                if self.state['dice_counts'][candidate] > 0:
+                    self.current_player = candidate
+                    break
+            else:
+                # Fallback: use first alive player
+                self.current_player = alive_players[0]
         
         # Check for maputa (single die rule)
         self.maputa_active = (self.simulator.use_maputa and 
@@ -227,7 +244,9 @@ class InteractivePerudoGame:
                     # Exact call failed - caller loses
                     self._handle_round_end(self.current_player)
         
-        return True
+            # Notify listeners of state change
+            self._notify_state_change()
+            return True
     
     def _handle_round_end(self, loser, actual_count=None):
         """Handle the end of a round when someone loses a die."""
@@ -250,6 +269,19 @@ class InteractivePerudoGame:
         self.human_continue_status = {}
         for i in range(len(self.players)):
             self.human_continue_status[i] = False
+        
+        # Set auto-continue timer if enabled
+        if self.auto_continue_delay > 0:
+            import threading
+            import time
+            def auto_continue():
+                time.sleep(self.auto_continue_delay)
+                if self.round_end_state:  # Still in round end state
+                    self._continue_after_round_end()
+            
+            self.auto_continue_timer = threading.Thread(target=auto_continue)
+            self.auto_continue_timer.daemon = True
+            self.auto_continue_timer.start()
         
         # Remove a die from loser
         self.state['dice_counts'][loser] = max(0, self.state['dice_counts'][loser] - 1)
@@ -320,6 +352,12 @@ class InteractivePerudoGame:
         if not self.round_end_state:
             return
         
+        # Cancel auto-continue timer if it exists
+        if self.auto_continue_timer and self.auto_continue_timer.is_alive():
+            # Note: We can't directly cancel a sleeping thread, but the condition check
+            # in auto_continue will prevent it from proceeding if round_end_state is False
+            pass
+        
         # Clear round end state
         self.round_end_state = False
         self.round_end_loser = None
@@ -327,10 +365,13 @@ class InteractivePerudoGame:
         self.round_end_actual_count = None
         self.round_end_all_hands = None
         self.human_continue_status = {}
+        self.auto_continue_timer = None
         
         # Start new round if game not over
         if not self.is_game_over():
             self._start_new_round()
+            # Notify listeners of state change
+            self._notify_state_change()
     
     def is_in_round_end_state(self):
         """Check if currently in round end state."""
@@ -350,45 +391,69 @@ class InteractivePerudoGame:
             'continue_status': dict(self.human_continue_status)
         }
     
+    def add_state_listener(self, callback):
+        """Add callback to be notified of state changes."""
+        self.state_listeners.append(callback)
+    
+    def _notify_state_change(self):
+        """Notify all listeners of state change."""
+        for callback in self.state_listeners:
+            try:
+                callback(self)
+            except Exception as e:
+                # Log error but don't break game
+                pass
+    
     def process_ai_turns(self):
         """Process all consecutive AI turns until it's a human player's turn or game ends."""
-        while (not self.is_game_over() and 
-               not self.is_human_player(self.current_player)):
-            
-            ai_index = self.current_player - len(self.players)
-            if ai_index >= len(self.ai_agents):
-                break
-            
-            # Set AI thinking status before processing
-            self.ai_thinking = True
-            self.ai_thinking_player = self.current_player
-            
-            try:
-                ai_agent = self.ai_agents[ai_index]
-                obs = self.get_observation(self.current_player)
+        import threading
+        
+        def process_ai_turns_async():
+            """Process AI turns in background thread with immediate state updates."""
+            while (not self.is_game_over() and 
+                   not self.is_human_player(self.current_player)):
                 
-                # Convert observation to format expected by agents
-                agent_obs = {
-                    'player_idx': obs['player_idx'],
-                    'my_hand': obs['hand'],
-                    'dice_counts': obs['dice_counts'],
-                    'current_bid': self.current_bid,
-                    'history': [],
-                    'maputa_active': obs.get('maputa_active', False),
-                    'maputa_restrict_face': obs.get('maputa_restrict_face'),
-                    '_simulator': self.simulator,
-                }
+                ai_index = self.current_player - len(self.players)
+                if ai_index >= len(self.ai_agents):
+                    break
                 
-                action = ai_agent.select_action(agent_obs)
+                # Set AI thinking status and notify immediately
+                self.ai_thinking = True
+                self.ai_thinking_player = self.current_player
+                self._notify_state_change()
                 
-                if action[0] == 'bid':
-                    self.submit_bid(action[1], action[2])
-                elif action[0] == 'call':
-                    self.submit_call()
-                elif action[0] == 'exact':
-                    self.submit_exact_call()
+                try:
+                    ai_agent = self.ai_agents[ai_index]
+                    obs = self.get_observation(self.current_player)
                     
-            finally:
-                # Clear AI thinking status after processing
-                self.ai_thinking = False
-                self.ai_thinking_player = None
+                    # Convert observation to format expected by agents
+                    agent_obs = {
+                        'player_idx': obs['player_idx'],
+                        'my_hand': obs['hand'],
+                        'dice_counts': obs['dice_counts'],
+                        'current_bid': self.current_bid,
+                        'history': [],
+                        'maputa_active': obs.get('maputa_active', False),
+                        'maputa_restrict_face': obs.get('maputa_restrict_face'),
+                        '_simulator': self.simulator,
+                    }
+                    
+                    action = ai_agent.select_action(agent_obs)
+                    
+                    if action[0] == 'bid':
+                        self.submit_bid(action[1], action[2])
+                    elif action[0] == 'call':
+                        self.submit_call()
+                    elif action[0] == 'exact':
+                        self.submit_exact_call()
+                        
+                finally:
+                    # Clear AI thinking status and notify
+                    self.ai_thinking = False
+                    self.ai_thinking_player = None
+                    self._notify_state_change()
+        
+        # Run AI processing in background thread for non-blocking operation
+        ai_thread = threading.Thread(target=process_ai_turns_async)
+        ai_thread.daemon = True
+        ai_thread.start()

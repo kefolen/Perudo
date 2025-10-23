@@ -86,9 +86,18 @@ class TestPerudoSimulator:
         assert len(bid_actions) > 0
 
         # All bid actions should be higher than current bid
+        # With wild 1's rules: after (2, 3) we can have:
+        # - (1, 1) because non-1 to 1 requires ceiling(2/2) = 1
+        # - (2, 4), (2, 5), (2, 6) for same quantity higher face
+        # - (3+, any) for higher quantities
         for action in bid_actions:
             qty, face = Action.qty(action), Action.face(action)
-            assert (qty > 2) or (qty == 2 and face > 3)
+            if face == 1:
+                # Transitioning to 1's: minimum is ceiling(2/2) = 1
+                assert qty >= 1
+            else:
+                # Staying with non-1's: standard progression
+                assert (qty > 2) or (qty == 2 and face > 3)
 
     def test_legal_actions_with_maputa(self, sample_simulator):
         """Test legal actions with maputa restriction."""
@@ -179,9 +188,18 @@ class TestPerudoSimulator:
         # Should contain higher bids
         assert len(legal_bids) > 0
 
-        # All bids should be higher than current
+        # All bids should be higher than current bid
+        # With wild 1's rules: after (2, 3) we can have:
+        # - (1, 1) because non-1 to 1 requires ceiling(2/2) = 1
+        # - (2, 4), (2, 5), (2, 6) for same quantity higher face
+        # - (3+, any) for higher quantities
         for qty, face in legal_bids:
-            assert (qty > 2) or (qty == 2 and face > 3)
+            if face == 1:
+                # Transitioning to 1's: minimum is ceiling(2/2) = 1
+                assert qty >= 1
+            else:
+                # Staying with non-1's: standard progression
+                assert (qty > 2) or (qty == 2 and face > 3)
             assert qty <= cap_qty
 
     def test_next_player_idx(self, sample_simulator):

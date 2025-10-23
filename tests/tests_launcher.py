@@ -48,6 +48,11 @@ def run_all_tests():
     if regression_dir.exists():
         test_files.extend([str(f) for f in regression_dir.glob('test_*.py')])
 
+    # Add web tests
+    web_dir = tests_root / 'web'
+    if web_dir.exists():
+        test_files.extend([str(f) for f in web_dir.glob('test_*.py')])
+
     if not test_files:
         print("No test files found.")
         return 0

@@ -124,6 +124,66 @@ MonteCarloAgent(
 )
 ```
 
+## Web Interface
+
+The project includes a **Flask-based web interface** that allows users to play Perudo online against AI opponents or with friends. The web interface follows the same TDD principles as the core game engine.
+
+### Features
+
+**Room Management**
+- Create game rooms with 4-digit codes for easy sharing
+- Join existing rooms using room codes
+- Support for 2-8 players per room
+- Configurable AI opponents (Random, Baseline, Monte Carlo agents)
+
+**Game Interface**
+- Real-time game state updates via HTTP polling
+- Interactive dice display and bidding interface
+- Action buttons for bidding, calling, and exact calls
+- Game history and winner announcement
+
+**AI Integration**
+- Direct integration with all existing agent types
+- Configurable Monte Carlo agent parameters via JSON configuration
+- Mixed human-AI games with automatic AI turn processing
+
+### Getting Started with Web Interface
+
+1. **Start the Flask server**:
+   ```bash
+   cd web/
+   python app.py
+   ```
+   The server will run on `http://localhost:5000`
+
+2. **Create or join a room**:
+   - Visit the home page to create a new room or join an existing one
+   - Configure AI opponents when creating a room
+   - Share the 4-digit room code with friends
+
+3. **Play Perudo**:
+   - The web interface handles turn management and game state
+   - AI opponents play automatically on their turns
+   - Game follows standard Perudo rules with full support for special rules
+
+### Web Architecture
+
+**Backend**: Flask application (`web/app.py`) with RESTful endpoints
+**Frontend**: Plain HTML/CSS/JavaScript templates with polling-based updates
+**Game Logic**: `InteractivePerudoGame` wrapper around existing `PerudoSimulator`
+**AI Configuration**: JSON-based Monte Carlo agent parameter configuration
+
+### API Endpoints
+
+- `GET /` - Home page with room creation/joining
+- `POST /create_room` - Create new game room
+- `POST /join_room` - Join existing room
+- `GET /room/<code>` - Room lobby page
+- `GET /game/<code>` - Game interface page
+- `POST /start_game/<code>` - Start game in room
+- `POST /action` - Submit game action
+- `GET /poll/<code>` - Poll current game state
+
 ## Development Philosophy
 
 This project follows **Test-Driven Development (TDD)** principles:
@@ -134,9 +194,10 @@ This project follows **Test-Driven Development (TDD)** principles:
 - **Quality Assurance**: Comprehensive test coverage ensures reliability and maintainability
 
 ### Testing Framework
-- **132 comprehensive tests** covering unit, integration, performance, and regression testing
+- **140+ comprehensive tests** covering unit, integration, performance, regression, and web interface testing
 - **Fast execution** to support frequent TDD cycles
 - **Core functionality focus** rather than exhaustive edge cases
+- **Web interface tests** covering Flask routes, room management, and game integration
 
 ### Running Tests
 ```bash
@@ -148,6 +209,7 @@ python -m pytest tests/unit/ -v          # Unit tests
 python -m pytest tests/integration/ -v   # Integration tests
 python -m pytest tests/performance/ -v   # Performance tests
 python -m pytest tests/regression/ -v    # Regression tests
+python -m pytest tests/test_web_*.py -v  # Web interface tests
 
 # Run with coverage reporting
 python -m pytest --cov=. --cov-report=html tests/

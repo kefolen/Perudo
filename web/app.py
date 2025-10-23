@@ -3,12 +3,14 @@ Flask web application for Perudo game - Week 1 MVP implementation.
 Provides basic room creation and joining functionality.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify, Response
 import random
 import uuid
 import os
 import sys
 import json
+import time
+import threading
 
 # Add parent directory to path for importing game modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,7 +20,7 @@ from sim.perudo import PerudoSimulator
 from agents.random_agent import RandomAgent
 from agents.baseline_agent import BaselineAgent
 from agents.mc_agent import MonteCarloAgent
-from interactive_game import InteractivePerudoGame
+from web.interactive_game import InteractivePerudoGame
 
 app = Flask(__name__)
 app.secret_key = 'perudo-mvp-secret-key-change-in-production'
@@ -483,9 +485,13 @@ def submit_action():
     except ValueError:
         return jsonify({'error': 'Player not found in game'}), 400
     
-    # Check if it's the player's turn
-    if game.current_player != player_index:
+    # Check if it's the player's turn (except for continue actions during round end)
+    if action_type != 'continue' and game.current_player != player_index:
         return jsonify({'error': 'Not your turn'}), 400
+    
+    # Special validation for continue actions
+    if action_type == 'continue' and not game.is_in_round_end_state():
+        return jsonify({'error': 'Can only continue during round end'}), 400
     
     try:
         # Process action based on type
@@ -590,6 +596,114 @@ def poll_game_state(code):
     }
     
     return jsonify(response)
+
+
+@app.route('/stream/<int:code>')
+def stream_game_state(code):
+    """Stream game state updates using Server-Sent Events."""
+    if code not in rooms:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    room_data = rooms[code]
+    game = room_data.get('game_state')
+    
+    if game is None:
+        return jsonify({'error': 'Game not started'}), 400
+    
+    # Get current session
+    session_id = session.get('session_id')
+    if session_id not in players:
+        return jsonify({'error': 'Invalid session'}), 401
+    
+    # Check if player belongs to this room
+    if players[session_id]['room_code'] != code:
+        return jsonify({'error': 'Player not in room'}), 403
+    
+    # Find player index
+    player_nicknames = []
+    for player_entry in room_data['players']:
+        player_session_id = player_entry['session_id']
+        if player_session_id in players:
+            player_nicknames.append(players[player_session_id]['nickname'])
+    
+    try:
+        player_index = player_nicknames.index(players[session_id]['nickname'])
+    except ValueError:
+        return jsonify({'error': 'Player not found in game'}), 400
+    
+    def generate_updates():
+        """Generate SSE updates for game state changes."""
+        last_state = None
+        state_changed = threading.Event()
+        
+        # Add state change listener to game
+        def on_state_change(game_instance):
+            state_changed.set()
+        
+        game.add_state_listener(on_state_change)
+        
+        while True:
+            try:
+                if code not in rooms or rooms[code].get('game_state') != game:
+                    # Room or game no longer exists
+                    break
+                
+                # Get current game state
+                obs = game.get_observation(player_index)
+                
+                # Build current state
+                current_state = {
+                    'current_player': game.current_player,
+                    'is_your_turn': game.current_player == player_index,
+                    'your_player_index': player_index,
+                    'your_dice': obs['hand'],
+                    'current_bid': {
+                        'quantity': obs['current_bid'][0] if obs['current_bid'] else None,
+                        'face': obs['current_bid'][1] if obs['current_bid'] else None
+                    } if obs['current_bid'] else None,
+                    'legal_actions': [
+                        {
+                            'type': action[0],
+                            'quantity': action[1] if len(action) > 1 else None,
+                            'face': action[2] if len(action) > 2 else None
+                        }
+                        for action in obs['legal_actions']
+                    ],
+                    'game_over': game.is_game_over(),
+                    'winner': game.get_winner() if game.is_game_over() else None,
+                    'players': [
+                        {
+                            'name': game.get_player_name(i),
+                            'dice_count': game.dice_counts[i],
+                            'is_ai': not game.is_human_player(i)
+                        }
+                        for i in range(game.get_player_count())
+                    ],
+                    'round_history': obs.get('round_history', []),
+                    'round_end_state': game.is_in_round_end_state(),
+                    'round_end_info': game.get_round_end_info(),
+                    'ai_thinking': obs.get('ai_thinking', False),
+                    'ai_thinking_player': obs.get('ai_thinking_player', None)
+                }
+                
+                # Send update if state changed or this is first update
+                if current_state != last_state:
+                    yield f"data: {json.dumps(current_state)}\n\n"
+                    last_state = current_state.copy()
+                    
+                    # If game is over, close the stream
+                    if current_state['game_over']:
+                        break
+                
+                # Brief pause to prevent excessive CPU usage
+                time.sleep(0.1)
+                
+            except Exception as e:
+                # Send error and close stream
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                break
+    
+    return Response(generate_updates(), mimetype='text/plain')
 
 
 if __name__ == '__main__':
