@@ -138,13 +138,11 @@ class TestAgentInterface:
             name='custom_mc',
             n=50,
             rng=rng,
-            chunk_size=10,
-            max_rounds=4
+            chunk_size=10
         )
         assert mc_agent.name == 'custom_mc'
         assert mc_agent.N == 50  # MonteCarloAgent uses capital N
         assert mc_agent.chunk_size == 10
-        assert mc_agent.max_rounds == 4
 
     def test_agents_handle_no_current_bid(self, all_agent_types):
         """Test that agents handle the case when there's no current bid."""

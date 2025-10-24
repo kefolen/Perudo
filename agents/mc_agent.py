@@ -21,9 +21,9 @@ class MonteCarloAgent(ParallelProcessingMixin):
     Faster Monte-Carlo determinization agent with:
       - chunked simulations
       - precomputed binomial tails for p=1/6 and p=1/3
-      - early stopping (per-action) via max_rounds and optional early-terminate by margin
+      - early stopping (per-action) via optional early-terminate by margin
       - minimal allocations in inner loop
-      - option: simulate only to the end of current round and evaluate heuristic win-prob
+      - simulates until game ends naturally (only one player remains)
       - weighted determinization sampling based on bidding history (Phase 1)
       - parallel processing support with configurable worker pools (Phase 2)
       - enhanced action pruning with opponent modeling (Phase 3)
@@ -31,8 +31,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
     """
 
     def __init__(self, name='mc', n=200, rng=None,
-                 chunk_size=8, max_rounds=6, simulate_to_round_end=True,
-                 early_stop_margin=0.1, weighted_sampling=False,
+                 chunk_size=8, early_stop_margin=0.1, weighted_sampling=False,
                  enable_parallel=False, num_workers=None, enhanced_pruning=False,
                  variance_reduction=False, betting_history_enabled=False,
                  player_trust_enabled=False, trust_learning_rate=0.1,
@@ -41,8 +40,6 @@ class MonteCarloAgent(ParallelProcessingMixin):
         self.N = max(1, int(n))
         self.rng = rng or random.Random()
         self.chunk_size = max(1, int(chunk_size))
-        self.max_rounds = int(max_rounds)  # cap rounds per simulation
-        self.simulate_to_round_end = bool(simulate_to_round_end)
         self.rollout_policy_cls = BaselineAgent
         self._rollout_agents = None
         # early_stop_margin: if an action is behind current best by > margin (estimate), stop evaluating it
@@ -249,8 +246,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
         """
         Optimized simulate:
           - local variables for performance
-          - cap rounds by self.max_rounds (guarantees termination)
-          - option: if simulate_to_round_end True then do only current round and return heuristic thereafter
+          - simulates until game ends naturally (only one player remains)
         """
         sim = obs['_simulator']
         # shallow copies only where needed
@@ -324,10 +320,8 @@ class MonteCarloAgent(ParallelProcessingMixin):
             maputa_active = sim.use_maputa and (dice_counts[loser] == 1)
             cur = loser
 
-        # If simulate_to_round_end: do only to end of current round then return heuristic estimate
-        rounds = 0
-        while alive_count > 1 and rounds < self.max_rounds:
-            rounds += 1
+        # Simulate until game ends naturally (only one player remains)
+        while alive_count > 1:
             # pick rollout agent for cur (they use obs only)
             # build minimal obs_local (reuse frequently)
             # Note: baseline agent expects lists; do not copy hands[cur] if agent doesn't mutate
@@ -393,7 +387,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
             maputa_active = sim.use_maputa and (dice_counts[loser] == 1)
             cur = loser
 
-        # after loop: if we ran out of rounds -> return heuristic estimate
+        # Game completed naturally
         if alive_count <= 0:
             return 0.0
         if alive_count == 1:
@@ -404,11 +398,6 @@ class MonteCarloAgent(ParallelProcessingMixin):
                     winner = i
                     break
             return 1.0 if winner == player_idx else 0.0
-
-        # alive_count > 1 but rounds capped
-        if self.simulate_to_round_end:
-            # return a heuristic estimate of win probability (cheap)
-            return heuristic_win_prob(dice_counts, player_idx)
-        else:
-            # if not using heuristic, continue sim (but we capped rounds already) => fallback
-            return heuristic_win_prob(dice_counts, player_idx)
+        
+        # This should not happen since we loop until alive_count <= 1
+        return 0.0

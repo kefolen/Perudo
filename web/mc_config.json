@@ -6,8 +6,6 @@
             "name": "Display name for the agent",
             "n": "Number of Monte Carlo simulations to run per action evaluation",
             "chunk_size": "Number of simulations to process in each batch (for performance optimization)",
-            "max_rounds": "Maximum number of rounds to simulate in each determinization",
-            "simulate_to_round_end": "Whether to simulate complete rounds or use heuristic evaluation",
             "early_stop_margin": "Threshold for early stopping when an action is clearly inferior",
             "weighted_sampling": "Enable weighted dice sampling based on game patterns",
             "enable_parallel": "Enable parallel processing using multiple CPU cores",
@@ -23,7 +21,6 @@
         "performance_notes": {
             "n": "Higher values = better decisions but slower computation. 100-500 recommended for web play",
             "chunk_size": "8-16 works well for most systems. Larger values may improve performance on multi-core systems",
-            "max_rounds": "4-6 rounds usually sufficient. Higher values increase computation time significantly",
             "enable_parallel": "Recommended for multi-core systems when n > 200",
             "num_workers": "Leave null to auto-detect CPU cores. Set manually only if needed"
         }
@@ -32,8 +29,6 @@
     "name": "MC_Agent",
     "n": 1000,
     "chunk_size": 8,
-    "max_rounds": 10,
-    "simulate_to_round_end": true,
     "early_stop_margin": 0.15,
     "weighted_sampling": true,
     "enable_parallel": true,

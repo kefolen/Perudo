@@ -602,16 +602,33 @@ def apply_variance_reduction(simulation_results, obs, action):
 
 def heuristic_win_prob(dice_counts, player_idx):
     """
-    Simple heuristic value: given dice counts, approximate win probability.
-    Logistic based on relative dice counts.
+    Heuristic win probability based on dice advantage and opponent entropy.
+    Returns value in [0, 1].
     """
     total = sum(dice_counts)
     if total <= 0:
         return 0.0
+
     my = dice_counts[player_idx]
-    # baseline: probability proportional to dice count normalized
-    # add small exponent to favor larger counts
+    if my <= 0:
+        return 0.0
+
+    # --- relative power (same as old heuristic) ---
     denom = sum((c ** 1.2) for c in dice_counts if c > 0)
     if denom <= 0:
         return 0.0
-    return (my ** 1.2) / denom
+    rel_strength = (my ** 1.2) / denom  # in (0, 1)
+
+    # --- opponent entropy ---
+    opponents = [c for i, c in enumerate(dice_counts) if i != player_idx and c > 0]
+    if len(opponents) <= 1:
+        entropy_norm = 1.0  # only one opponent -> no uncertainty
+    else:
+        s = sum(opponents)
+        probs = [c / s for c in opponents]
+        entropy = -sum(p * math.log(p + 1e-12) for p in probs)
+        max_entropy = math.log(len(probs))
+        entropy_norm = entropy / max_entropy  # ∈ [0,1]
+
+    value = rel_strength * (0.6 + 0.4 * entropy_norm)
+    return max(0.0, min(1.0, value))
