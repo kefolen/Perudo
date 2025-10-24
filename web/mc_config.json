@@ -30,9 +30,9 @@
     },
     
     "name": "MC_Agent",
-    "n": 200,
+    "n": 1000,
     "chunk_size": 8,
-    "max_rounds": 4,
+    "max_rounds": 10,
     "simulate_to_round_end": true,
     "early_stop_margin": 0.15,
     "weighted_sampling": true,

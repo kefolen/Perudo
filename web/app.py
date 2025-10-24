@@ -593,7 +593,9 @@ def poll_game_state(code):
         'round_end_state': game.is_in_round_end_state(),
         'round_end_info': game.get_round_end_info(),
         'ai_thinking': obs.get('ai_thinking', False),  # Include AI thinking status
-        'ai_thinking_player': obs.get('ai_thinking_player', None)  # Include which AI is thinking
+        'ai_thinking_player': obs.get('ai_thinking_player', None),  # Include which AI is thinking
+        'maputa_active': obs.get('maputa_active', False),  # Include MAPUTA status
+        'maputa_restrict_face': obs.get('maputa_restrict_face', None)  # Include MAPUTA face restriction
     }
     
     return jsonify(response)
@@ -680,7 +682,9 @@ def stream_game_state(code):
                     'round_end_state': game.is_in_round_end_state(),
                     'round_end_info': game.get_round_end_info(),
                     'ai_thinking': obs.get('ai_thinking', False),
-                    'ai_thinking_player': obs.get('ai_thinking_player', None)
+                    'ai_thinking_player': obs.get('ai_thinking_player', None),
+                    'maputa_active': obs.get('maputa_active', False),  # Include MAPUTA status
+                    'maputa_restrict_face': obs.get('maputa_restrict_face', None)  # Include MAPUTA face restriction
                 }
             
             # Send initial state
@@ -744,4 +748,4 @@ def stream_game_state(code):
 
 if __name__ == '__main__':
     # Run development server
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
