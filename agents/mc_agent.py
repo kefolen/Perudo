@@ -48,7 +48,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
         self.enhanced_pruning = bool(enhanced_pruning)
         self.variance_reduction = bool(variance_reduction)
         
-        # Initialize betting history parameters (Phase 5)
+        # Initialize betting history parameters
         self.betting_history_enabled = bool(betting_history_enabled)
         self.player_trust_enabled = bool(player_trust_enabled)
         self.trust_learning_rate = float(trust_learning_rate)

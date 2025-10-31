@@ -27,9 +27,9 @@
     },
     
     "name": "MC_Agent",
-    "n": 1000,
-    "chunk_size": 8,
-    "early_stop_margin": 0.15,
+    "n": 2000,
+    "chunk_size": 16,
+    "early_stop_margin": 0.05,
     "weighted_sampling": true,
     "enable_parallel": true,
     "num_workers": null,
@@ -37,7 +37,7 @@
     "variance_reduction": true,
     "betting_history_enabled": true,
     "player_trust_enabled": true,
-    "trust_learning_rate": 0.1,
-    "history_memory_rounds": 10,
+    "trust_learning_rate": 0.4,
+    "history_memory_rounds": 20,
     "bayesian_sampling": true
 }

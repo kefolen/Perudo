@@ -190,6 +190,10 @@ def sample_weighted_dice(agent, obs, num_dice):
     
     bid_qty, bid_face = current_bid
     
+    # Get dynamic parameters from agent (with backward compatibility)
+    face_weight_boost = getattr(agent, 'get_utils_param', lambda p, d: d)('face_weight_boost', 1.4)
+    scaling_factor_base = getattr(agent, 'get_utils_param', lambda p, d: d)('scaling_factor', 1.75)
+    
     # Calculate face probabilities based on bid plausibility
     # Higher weight for faces that make the current bid more plausible
     face_weights = [1.0] * 6  # Base weights for faces 1-6
@@ -199,16 +203,16 @@ def sample_weighted_dice(agent, obs, num_dice):
     
     if bid_face == 1:
         # Bid is for ones - increase weight for ones
-        face_weights[0] = 2.0  # Face 1 gets higher weight
+        face_weights[0] = face_weight_boost  # Use dynamic parameter
     else:
         # Bid is for non-ones
         if ones_wild:
             # Both bid_face and ones contribute to the bid
-            face_weights[0] = 1.5  # Ones get moderate boost (wild)
-            face_weights[bid_face - 1] = 2.0  # Bid face gets higher weight
+            face_weights[0] = 1.0 + (face_weight_boost - 1.0) * 0.75  # Ones get moderate boost (wild)
+            face_weights[bid_face - 1] = face_weight_boost  # Bid face gets higher weight
         else:
             # Only bid_face contributes
-            face_weights[bid_face - 1] = 2.0  # Bid face gets higher weight
+            face_weights[bid_face - 1] = face_weight_boost  # Use dynamic parameter
     
     # Calculate total remaining dice needed to make bid plausible
     my_hand = obs['my_hand']
@@ -222,7 +226,7 @@ def sample_weighted_dice(agent, obs, num_dice):
         if total_other_dice > 0:
             needed_ratio = min(1.0, total_dice_needed / total_other_dice)
             # Scale weights more aggressively for higher ratios
-            scaling_factor = 1.0 + needed_ratio * 2.0
+            scaling_factor = 1.0 + needed_ratio * scaling_factor_base
             if bid_face == 1:
                 face_weights[0] *= scaling_factor
             else:
@@ -252,7 +256,7 @@ def sample_weighted_dice(agent, obs, num_dice):
     return dice
 
 
-def calculate_recency_weight(bid_round, current_round, decay_factor=0.8):
+def calculate_recency_weight(bid_round, current_round, decay_factor=0.9):
     """Calculate recency weight for historical bids."""
     rounds_ago = current_round - bid_round
     return max(0.1, decay_factor ** rounds_ago)  # Minimum weight of 0.1
@@ -282,6 +286,9 @@ def calculate_trust_weighted_accuracy(history, trust_params, face):
                 # Weight by trust and recency
                 recency_weight = calculate_recency_weight(entry.round_num, history.current_round)
                 weight = trust * recency_weight
+                
+                # Apply minimum weight threshold if available from context
+                min_weight_threshold = 0.1  # Default minimum weight threshold
                 
                 total_weighted_accuracy += accuracy * weight
                 total_weight += weight
