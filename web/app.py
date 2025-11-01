@@ -3,7 +3,7 @@ Flask web application for Perudo game - Week 1 MVP implementation.
 Provides basic room creation and joining functionality.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify, Response, send_from_directory
 import random
 import uuid
 import os
@@ -24,6 +24,12 @@ from web.interactive_game import InteractivePerudoGame
 
 app = Flask(__name__)
 app.secret_key = 'perudo-mvp-secret-key-change-in-production'
+
+# Favicon route (serves favicon.png located in templates directory)
+@app.route('/favicon.ico')
+def favicon():
+    templates_dir = os.path.join(os.path.dirname(__file__), 'templates')
+    return send_from_directory(templates_dir, 'favicon.png', mimetype='image/png')
 
 # In-memory storage for MVP (as specified in requirements)
 rooms = {}  # room_code: {'players': [], 'game_state': None, 'host': str, 'ai_configs': []}
@@ -112,7 +118,7 @@ def create_room(nickname, max_players=4, ai_configs=None):
         for i in range(max_players - 1):  # -1 for the human host
             ai_configs.append({
                 'type': 'random',
-                'name': f'AI_Bot_{i+1}',
+                'name': f'Random_AI_{i+1}',
                 'is_ai': True
             })
     
@@ -268,6 +274,12 @@ def home():
     return render_template('index.html')
 
 
+@app.route('/rules')
+def rules_page():
+    """Rules page with game instructions."""
+    return render_template('rules.html')
+
+
 @app.route('/create_room', methods=['POST'])
 def create_room_endpoint():
     """Handle room creation form submission with AI configuration."""
@@ -288,9 +300,16 @@ def create_room_endpoint():
     ai_configs = []
     for i in range(1, player_count):  # AI slots = player_count - 1 (human host)
         ai_type = request.form.get(f'ai_{i}_type', 'random')
+        # Name AI according to its type for clarity
+        if ai_type == 'baseline':
+            ai_name = f'Baseline_AI_{i}'
+        elif ai_type == 'mc':
+            ai_name = f'Monte_Carlo_AI_{i}'
+        else:
+            ai_name = f'Random_AI_{i}'
         ai_configs.append({
             'type': ai_type,
-            'name': f'AI_Bot_{i}',
+            'name': ai_name,
             'is_ai': True
         })
     
@@ -560,6 +579,13 @@ def poll_game_state(code):
     
     # Get game observation for this player
     obs = game.get_observation(player_index)
+    # Compute per-player last action from this round's history
+    player_count = game.get_player_count()
+    last_actions = [None] * player_count
+    for entry in obs.get('round_history', []):
+        idx = entry.get('player_index')
+        if isinstance(idx, int) and 0 <= idx < player_count:
+            last_actions[idx] = entry.get('action')
     
     # Build response with game state
     response = {
@@ -585,17 +611,21 @@ def poll_game_state(code):
             {
                 'name': game.get_player_name(i),
                 'dice_count': game.dice_counts[i],
-                'is_ai': not game.is_human_player(i)
+                'is_ai': not game.is_human_player(i),
+                'alive': game.dice_counts[i] > 0,
+                'last_action': last_actions[i]
             }
             for i in range(game.get_player_count())
         ],
         'round_history': obs.get('round_history', []),  # Include action history
         'round_end_state': game.is_in_round_end_state(),
         'round_end_info': game.get_round_end_info(),
+        'rounds_history': list(getattr(game, 'rounds_history', []))[:10],  # Include recent round-end snapshots (latest first)
         'ai_thinking': obs.get('ai_thinking', False),  # Include AI thinking status
         'ai_thinking_player': obs.get('ai_thinking_player', None),  # Include which AI is thinking
         'maputa_active': obs.get('maputa_active', False),  # Include MAPUTA status
-        'maputa_restrict_face': obs.get('maputa_restrict_face', None)  # Include MAPUTA face restriction
+        'maputa_restrict_face': obs.get('maputa_restrict_face', None),  # Include MAPUTA face restriction,
+        'total_dice_in_play': sum(game.dice_counts)
     }
     
     return jsonify(response)
@@ -651,6 +681,13 @@ def stream_game_state(code):
             # Send initial state immediately
             def build_current_state():
                 obs = game.get_observation(player_index)
+                # Compute per-player last action from this round's history
+                player_count = game.get_player_count()
+                last_actions = [None] * player_count
+                for entry in obs.get('round_history', []):
+                    idx = entry.get('player_index')
+                    if isinstance(idx, int) and 0 <= idx < player_count:
+                        last_actions[idx] = entry.get('action')
                 return {
                     'current_player': game.current_player,
                     'is_your_turn': game.current_player == player_index,
@@ -674,7 +711,9 @@ def stream_game_state(code):
                         {
                             'name': game.get_player_name(i),
                             'dice_count': game.dice_counts[i],
-                            'is_ai': not game.is_human_player(i)
+                            'is_ai': not game.is_human_player(i),
+                            'alive': game.dice_counts[i] > 0,
+                            'last_action': last_actions[i]
                         }
                         for i in range(game.get_player_count())
                     ],
@@ -684,8 +723,10 @@ def stream_game_state(code):
                     'ai_thinking': obs.get('ai_thinking', False),
                     'ai_thinking_player': obs.get('ai_thinking_player', None),
                     'maputa_active': obs.get('maputa_active', False),  # Include MAPUTA status
-                    'maputa_restrict_face': obs.get('maputa_restrict_face', None)  # Include MAPUTA face restriction
-                }
+                    'maputa_restrict_face': obs.get('maputa_restrict_face', None),  # Include MAPUTA face restriction
+                        'total_dice_in_play': sum(game.dice_counts),
+                        'rounds_history': list(getattr(game, 'rounds_history', []))[:10]
+                    }
             
             # Send initial state
             current_state = build_current_state()

@@ -58,7 +58,7 @@ class TestGameHistoryTracking:
     def test_round_history_resets_on_new_round(self):
         """Test that round_history is reset when a new round starts."""
         from agents.random_agent import RandomAgent
-        game = InteractivePerudoGame(["TestPlayer"], [RandomAgent("AI_Bot_1")])
+        game = InteractivePerudoGame(["TestPlayer"], [RandomAgent("Random_AI_1")])
         
         # Add some fake history
         game.round_history.append({'player': 'Test', 'action': 'Test Action'})

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perudo Rules</title>
+  <link rel="icon" href="{{ url_for('favicon') }}" type="image/png">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 20px; background:#f5f5f5; }
+    h1 { text-align: center; margin-top: 10px; }
+    h2 { margin-top: 24px; }
+    .container { background:#fff; border:1px solid #ddd; border-radius:8px; padding:24px; }
+    .back { margin-top: 24px; text-align: center; }
+    .back button { padding: 10px 20px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+    .back button:hover { background:#0056b3; }
+    .callout { background:#e9f7ef; border-left:4px solid #28a745; padding:12px 16px; margin:16px 0; }
+    ul { line-height: 1.6; }
+    code { background: #f1f1f1; padding: 0 4px; border-radius: 3px; }
+    .tip { background:#fff3cd; border-left:4px solid #ffc107; padding:12px 16px; margin:16px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Perudo Rules</h1>
+
+    <p>Perudo (also known as Liar’s Dice) is a bluffing and probability game. Players secretly roll dice and make bids about the total count of a face value across all dice on the table. Players challenge bids or call exact counts, and the last player with dice remaining wins.</p>
+
+    <h2>1. Setup</h2>
+    <ul>
+      <li>Each player starts with <strong>5 dice</strong>.</li>
+      <li>Dice are rolled secretly at the start of each round.</li>
+      <li>Our app chooses who starts each round automatically.</li>
+    </ul>
+
+    <h2>2. Core Concepts</h2>
+    <ul>
+      <li><strong>Bid</strong>: A claim of the form “quantity × face”. Example: <code>3 × 5</code> means “there are at least three 5s among all dice”.</li>
+      <li><strong>Ones are wild</strong>: Ones count toward any non-1 face when evaluating a bid. Example: for a bid on 5s, dice showing 1 also count as 5s.</li>
+      <li><strong>Current bid</strong>: Each new bid must be higher than the previous bid (see progression rules).</li>
+    </ul>
+
+    <h2>3. Bid Progression Rules</h2>
+    <p>Each new bid must strictly increase the claim based on the previous bid:</p>
+    <ul>
+      <li>Non-1 → Non-1: Either increase quantity and change the face to whatever you like, or keep quantity and raise the face.</li>
+      <li>Non-1 → 1: Minimum quantity becomes <code>ceil(prev_qty / 2)</code>.</li>
+      <li>1 → Non-1: Minimum quantity becomes <code>2 × prev_qty + 1</code>.</li>
+      <li>1 → 1: Increase quantity by at least 1.</li>
+    </ul>
+
+    <h2>4. Your Turn: Actions</h2>
+    <ul>
+      <li><strong>Bid</strong>: Make a higher bid according to the rules above.</li>
+      <li><strong>Call (Challenge)</strong>: Challenge the last bid as being too high. This ends the round and reveals all dice.</li>
+      <li><strong>Exact</strong>: Claim the previous bid is exactly correct. Special resolution applies (see below).</li>
+    </ul>
+
+    <h2>5. Round End and Resolution</h2>
+    <ul>
+      <li>When a <strong>Call</strong> is made, all dice are revealed and the last bid is evaluated.</li>
+      <li>If the bid is <strong>true</strong> (≥ claimed quantity), the <em>caller</em> loses one die.</li>
+      <li>If the bid is <strong>false</strong> (&lt; claimed quantity), the <em>bidder</em> loses one die.</li>
+      <li><strong>Exact</strong> call: If the actual count equals the bid’s quantity, the exact caller <em>gains</em> one die and the last bidder loses one. Otherwise, the exact caller loses one die.</li>
+      <li>The player who lost a die will start the next round (if still alive); if eliminated, the next alive player starts.</li>
+    </ul>
+
+    <h2>6. Special Rule: MAPUTA (Single-Die Rule)</h2>
+    <div class="callout">
+      In MAPUTA rounds, <strong>ones are NOT wild</strong>.
+    </div>
+    <ul>
+      <li>MAPUTA activates when the starting player of a round has exactly <strong>1 die</strong>.</li>
+      <li>The <strong>first bid of the round</strong> sets a <em>restricted face</em> (the face used in that first bid).
+        <ul>
+          <li>For the rest of that round, <strong>all bids must use that same face</strong>.</li>
+          <li>If any player bids a different face, the round ends immediately and that player loses a die.</li>
+        </ul>
+      </li>
+      <li>During MAPUTA, <strong>ones are not wild</strong> for counting purposes—only the exact face value counts.</li>
+    </ul>
+
+    <h2>7. Game End</h2>
+    <ul>
+      <li>When you lose your last die, you’re eliminated.</li>
+      <li>The game ends when only one player has dice remaining. That player wins.</li>
+    </ul>
+
+    <div class="tip">
+      Tip: The UI will show a MAPUTA indicator when it’s active.
+    </div>
+
+    <div class="back">
+      <a href="{{ url_for('home') }}" style="display:inline-block; padding:10px 20px; background:#007bff; color:#fff; border-radius:4px; text-decoration:none;">Back to Home</a>
+    </div>
+  </div>
+</body>
+</html>

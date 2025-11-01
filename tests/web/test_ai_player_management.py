@@ -54,7 +54,7 @@ class TestAIPrePopulation:
             assert room['players'][i]['is_ai'] == True
             assert 'ai_config' in room['players'][i]
             assert room['players'][i]['ai_config']['type'] == 'random'
-            assert room['players'][i]['ai_config']['name'] == f'AI_Bot_{i}'
+            assert room['players'][i]['ai_config']['name'] == f'Random_AI_{i}'
     
     def test_create_room_with_different_player_counts(self, client):
         """Test room creation with different player counts."""
@@ -323,7 +323,7 @@ class TestGameInitialization:
         game = room['game_state']
         assert game.get_player_name(0) == "Host"
         assert game.get_player_name(1) == "Guest"
-        assert game.get_player_name(2).startswith("AI_Bot_")
+        assert game.get_player_name(2).startswith("Random_AI_")
 
 
 class TestFormIntegration:

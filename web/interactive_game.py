@@ -53,7 +53,15 @@ class InteractivePerudoGame:
         self.round_end_last_bid = None
         self.round_end_actual_count = None
         self.round_end_all_hands = None
+        # Store round-specific flags for correct UI rendering after round end
+        self.round_end_maputa_active = None
+        self.round_end_ones_are_wild = None
+        # Track the last action that caused the round to end (e.g., call/exact)
+        self.round_end_last_action = None
         self.human_continue_status = {}  # Track which humans have pressed continue
+
+        # Persistent history of round-end snapshots (for viewing past rounds)
+        self.rounds_history = []
         
         # AI processing state management
         self.ai_thinking = False  # True when an AI is actively processing their turn
@@ -215,14 +223,22 @@ class InteractivePerudoGame:
             # Validate maputa restriction
             if (self.maputa_restrict_face is not None and 
                 face != self.maputa_restrict_face):
+                # Illegal face during MAPUTA restriction ends the round immediately
                 self._handle_round_end(self.current_player)
+                # Notify listeners so all clients update instantly
+                self._notify_state_change()
                 return True
             
+            # Normal bid progression
             self.current_bid = (quantity, face)
             self.current_bid_maker = self.current_player
             self.current_player = self.simulator.next_player_idx(
                 self.current_player, self.state['dice_counts']
             )
+            
+            # Notify listeners after any bid so other clients update without refresh
+            self._notify_state_change()
+            return True
             
         else:
             # Process call or exact
@@ -237,10 +253,22 @@ class InteractivePerudoGame:
             )
             
             if action[0] == 'call':
+                # Record last action info for round results
+                self.round_end_last_action = {
+                    'type': 'call',
+                    'player_index': self.current_player,
+                    'player_name': self.get_player_name(self.current_player)
+                }
                 loser = self.current_player if bid_true else self.current_bid_maker
                 self._handle_round_end(loser)
                 
             else:  # exact call
+                # Record last action info for round results
+                self.round_end_last_action = {
+                    'type': 'exact',
+                    'player_index': self.current_player,
+                    'player_name': self.get_player_name(self.current_player)
+                }
                 if actual_count == self.current_bid[0]:
                     # Exact call succeeded - caller gains die, bid maker loses
                     self.state['dice_counts'][self.current_player] += 1
@@ -263,12 +291,34 @@ class InteractivePerudoGame:
                 ones_are_wild=(self.simulator.ones_are_wild and not self.maputa_active)
             )
         
+        # Capture round-specific flags for correct UI rendering
+        self.round_end_maputa_active = self.maputa_active
+        self.round_end_ones_are_wild = (self.simulator.ones_are_wild and not self.maputa_active)
+        
         # Enter round end state
         self.round_end_state = True
         self.round_end_loser = loser
         self.round_end_last_bid = self.current_bid
         self.round_end_actual_count = actual_count
         self.round_end_all_hands = [list(hand) for hand in self.hands]  # Copy all hands
+
+        # Append snapshot to persistent rounds history (latest-first)
+        try:
+            snapshot = {
+                'loser': self.round_end_loser,
+                'loser_name': self.get_player_name(self.round_end_loser) if self.round_end_loser is not None else None,
+                'last_bid': self.round_end_last_bid,
+                'actual_count': self.round_end_actual_count,
+                'all_hands': [list(hand) for hand in self.hands] if self.hands is not None else None,
+                'last_action': self.round_end_last_action,
+                'round_maputa_active': self.round_end_maputa_active,
+                'round_ones_are_wild': self.round_end_ones_are_wild,
+                'round_actions': list(self.round_history)
+            }
+            self.rounds_history.insert(0, snapshot)
+        except Exception:
+            # Do not break flow if history recording fails
+            pass
         
         # Initialize continue status for all human players
         self.human_continue_status = {}
@@ -333,7 +383,11 @@ class InteractivePerudoGame:
             return self.players[player_index]
         else:
             ai_index = player_index - len(self.players)
-            return f"AI_Bot_{ai_index + 1}"
+            # Return the actual AI agent's configured name when available
+            if 0 <= ai_index < len(self.ai_agents) and hasattr(self.ai_agents[ai_index], 'name'):
+                return self.ai_agents[ai_index].name
+            # Fallback to generic naming if agent missing
+            return f"AI_{ai_index + 1}"
     
     def submit_continue(self, player_index):
         """Submit continue action for a human player during round end state."""
@@ -372,6 +426,9 @@ class InteractivePerudoGame:
         self.round_end_last_bid = None
         self.round_end_actual_count = None
         self.round_end_all_hands = None
+        self.round_end_maputa_active = None
+        self.round_end_ones_are_wild = None
+        self.round_end_last_action = None
         self.human_continue_status = {}
         self.auto_continue_timer = None
         
@@ -400,7 +457,11 @@ class InteractivePerudoGame:
             'last_bid': self.round_end_last_bid,
             'actual_count': self.round_end_actual_count,
             'all_hands': self.round_end_all_hands,
-            'continue_status': dict(self.human_continue_status)
+            'continue_status': dict(self.human_continue_status),
+            'last_action': self.round_end_last_action,
+            # Flags to render last round correctly regardless of current round's state
+            'round_maputa_active': self.round_end_maputa_active,
+            'round_ones_are_wild': self.round_end_ones_are_wild
         }
     
     def add_state_listener(self, callback):

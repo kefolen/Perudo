@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perudo Game - Room {{ room_code }}</title>
+        <link rel="icon" href="{{ url_for('favicon') }}" type="image/png">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -88,6 +89,14 @@
             background-color: #f8f9fa;
             border-radius: 5px;
             border-left: 4px solid #28a745;
+        }
+        
+        /* Darker style for eliminated (dead) players */
+        .player.dead {
+            background-color: #e0e0e0;
+            color: #555;
+            border-left-color: #999;
+            opacity: 0.85;
         }
         
         .player.current {
@@ -270,7 +279,7 @@
         .player-hand-display {
             display: flex;
             align-items: center;
-            margin: 10px 0;
+            margin: 14px 0;
             padding: 10px;
             background-color: white;
             border-radius: 5px;
@@ -555,6 +564,30 @@
                 width: auto;
             }
         }
+        /* Round results history styles */
+        .rounds-history { margin-top: 10px; }
+        .history-entry { background:#ffffff; border:1px solid #ddd; border-radius:8px; padding:16px; margin-bottom:18px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display:flex; flex-direction:column; }
+        .history-summary { display:flex; gap:18px; align-items:flex-start; margin-bottom:12px; }
+        .history-summary .summary-text { flex: 1; }
+        .history-summary .title { font-weight:bold; margin-bottom:6px; }
+        .history-details { display:grid; grid-template-columns: 240px 1fr; column-gap: 16px; row-gap: 10px; align-items:start; }
+        .history-player-hand { display:contents; }
+        .history-player-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .history-player-dice { display:flex; flex-wrap:wrap; gap:6px; }
+        .history-die { width:28px; height:28px; border:1px solid #333; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:bold; }
+        .history-die.highlighted { background:#ffecb3; border-color:#ffc107; }
+        .history-meta { color:#555; }
+                /* Inline current round history under dice */
+                .inline-history { background:#fafafa; border:1px solid #e0e0e0; border-radius:8px; padding:10px 12px; margin:10px 0 0 0; }
+                .inline-history h4 { margin:4px 0 8px 0; font-size:14px; color:#333; }
+                .inline-history .entry { display:flex; gap:8px; align-items:flex-start; padding:4px 0; border-bottom:1px dashed #eee; }
+                .inline-history .entry:last-child { border-bottom:none; }
+                .inline-history .who { min-width:120px; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:bold; color:#555; }
+                .inline-history .what { flex:1; color:#444; }
+                .inline-history .meta { color:#666; font-size:12px; margin-top:6px; }
+                .inline-history .tiny-dice { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+                .inline-history .tiny-die { width:22px; height:22px; border:1px solid #333; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; }
+                .inline-history .tiny-die.highlighted { background:#ffecb3; border-color:#ffc107; }
     </style>
 </head>
 <body>
@@ -817,88 +850,142 @@
         }
 
         function updatePersistentRoundResults() {
-            const sidebarHistoryContainer = document.querySelector('.sidebar-history');
-            
-            if (!sidebarHistoryContainer) {
-                return; // Sidebar not yet created
-            }
-            
-            let resultsContainer = document.querySelector('.persistent-round-results');
-            
-            if (!resultsContainer && lastRoundResults) {
-                // Create the persistent results container in sidebar
-                const resultsHtml = `
-                    <div class="persistent-round-results">
-                        <h4>Last Round Result</h4>
-                        <div class="compact-round-info"></div>
-                    </div>
-                `;
-                sidebarHistoryContainer.insertAdjacentHTML('afterbegin', resultsHtml);
-                resultsContainer = document.querySelector('.persistent-round-results');
-            }
-            
-            if (!resultsContainer) return;
-            
-            const infoElement = resultsContainer.querySelector('.compact-round-info');
-            
-            if (lastRoundResults && infoElement) {
-                resultsContainer.classList.add('visible');
-                
-                const bidFace = lastRoundResults.last_bid ? lastRoundResults.last_bid[1] : null;
-                const bidQuantity = lastRoundResults.last_bid ? lastRoundResults.last_bid[0] : null;
-                const actualCount = lastRoundResults.actual_count || 0;
-                
-                infoElement.innerHTML = `
-                    <div class="compact-summary">
-                        <div class="compact-loser">${lastRoundResults.loser_name} lost a die</div>
-                        <div class="compact-bid-result">
-                            Bid: ${bidQuantity} × ${bidFace}<br>
-                            Actual: ${actualCount} dice
-                        </div>
-                    </div>
-                    <div class="compact-hands-display">
-                        <div class="compact-hands-column">
-                            ${gameState.players.slice(0, 4).map((player, index) => `
-                                <div class="compact-player-hand">
-                                    <div class="compact-player-name">${player.name}</div>
-                                    <div class="compact-dice">
-                                        ${lastRoundResults.all_hands && lastRoundResults.all_hands[index] ? 
-                                            lastRoundResults.all_hands[index].map(die => {
-                                                // During MAPUTA, ones are not wild - only highlight direct matches
-                                                const isMaputa = gameState.maputa_active || false;
-                                                const shouldHighlight = bidFace && ((die == bidFace) || (!isMaputa && die == 1 && bidFace != 1));
-                                                return `<div class="compact-die${shouldHighlight ? ' highlighted' : ''}">${die}</div>`;
-                                            }).join('') : ''}
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                        <div class="compact-hands-column">
-                            ${gameState.players.slice(4).map((player, index) => {
-                                const actualIndex = index + 4; // Adjust index for players 5+
-                                return `
-                                    <div class="compact-player-hand">
-                                        <div class="compact-player-name">${player.name}</div>
-                                        <div class="compact-dice">
-                                            ${lastRoundResults.all_hands && lastRoundResults.all_hands[actualIndex] ? 
-                                                lastRoundResults.all_hands[actualIndex].map(die => {
-                                                    // During MAPUTA, ones are not wild - only highlight direct matches
-                                                    const isMaputa = gameState.maputa_active || false;
-                                                    const shouldHighlight = bidFace && ((die == bidFace) || (!isMaputa && die == 1 && bidFace != 1));
-                                                    return `<div class="compact-die${shouldHighlight ? ' highlighted' : ''}">${die}</div>`;
-                                                }).join('') : ''}
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                `;
-            } else if (resultsContainer) {
-                resultsContainer.classList.remove('visible');
-            }
+            // Deprecated single-entry panel replaced by multi-round history
+            updateRoundResultsHistory();
         }
 
+        function updateRoundResultsHistory() {
+            const sidebar = document.querySelector('.sidebar-history');
+            if (!sidebar) return;
+
+            // Ensure container exists
+            let container = document.querySelector('.rounds-history');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'rounds-history';
+                sidebar.innerHTML = ''; // Clear any previous single-result content
+                sidebar.appendChild(container);
+            }
+
+            const history = Array.isArray(gameState.rounds_history) ? gameState.rounds_history : [];
+
+            // Build a live 'Current Round' card at the top when not in round-end state
+            const live = Array.isArray(gameState.round_history) ? gameState.round_history : [];
+            let currentRoundHtml = '';
+            if (!gameState.round_end_state) {
+                const liveEntries = live.length
+                    ? live.map(e => `<div class="history-item"><span class="history-player">${e.player}:</span> <span class="history-action">${e.action}</span></div>`).join('')
+                    : '<div class="history-meta">No actions yet this round</div>';
+                currentRoundHtml = `
+                    <div class="history-entry current-round">
+                        <div class="history-summary">
+                            <div class="summary-text">
+                                <div class="title">Current Round</div>
+                                <div class="history-meta">Live actions</div>
+                            </div>
+                        </div>
+                        <div class="history-actions">${liveEntries}</div>
+                    </div>
+                `;
+            }
+
+            // Build entries HTML; show latest first (index 0)
+            const entriesHtml = history.map((h, idx) => {
+                const bid = h.last_bid || null;
+                const bidQty = bid ? bid[0] : null;
+                const bidFace = bid ? bid[1] : null;
+                const actual = h.actual_count ?? 0;
+                const onesAreWildForRound = h.round_ones_are_wild === true;
+                const lastActionText = h.last_action ? (h.last_action.type === 'exact' ? 'Exact' : 'Call') + ' by ' + (h.last_action.player_name || '') : '';
+                const title = `Round ${history.length - idx} Result`;
+
+                // Build hands grid
+                const handsHtml = (h.all_hands ? gameState.players.map((player, pIdx) => {
+                    const diceHtml = (h.all_hands[pIdx] || []).map(die => {
+                        const highlight = bidFace && (die == bidFace || (onesAreWildForRound && die == 1 && bidFace != 1));
+                        return `<div class="history-die${highlight ? ' highlighted' : ''}">${die}</div>`;
+                    }).join('');
+                    return `
+                        <div class="history-player-hand">
+                            <div class="history-player-name">${player.name}${pIdx === h.loser ? ' (Lost die)' : ''}</div>
+                            <div class="history-player-dice">${diceHtml}</div>
+                        </div>
+                    `;
+                }).join('') : '');
+
+                // Build round actions list (if available)
+                const actionsListHtml = (Array.isArray(h.round_actions) && h.round_actions.length)
+                    ? `<div class=\"history-actions\">${h.round_actions.map(e => `<div class=\"history-item\"><span class=\"history-player\">${e.player}:</span> <span class=\"history-action\">${e.action}</span></div>`).join('')}</div>`
+                    : '';
+
+                return `
+                    <div class="history-entry" data-index="${idx}">
+                        <div class="history-summary">
+                            <div class="summary-text">
+                                <div class="title">${title}</div>
+                                <div class="history-meta">${h.loser_name || 'Unknown'} lost a die</div>
+                                ${bid ? `<div class="history-meta">Bid: ${bidQty} × ${bidFace} | Actual: ${actual}</div>` : ''}
+                                ${lastActionText ? `<div class="history-meta">Last action: ${lastActionText}</div>` : ''}
+                                ${h.round_maputa_active ? `<div class="history-meta">MAPUTA was active</div>` : ''}
+                            </div>
+                        </div>
+                        <div class="history-details">
+                            ${handsHtml}
+                        </div>
+                        ${actionsListHtml}
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = currentRoundHtml + (entriesHtml || '<div class="history-empty" style="color:#666;">No previous rounds yet.</div>');
+        }
+
+        // Build compact inline history under the player's dice
+        function buildInlineHistoryHtml() {
+            try {
+                // If round just ended, show the top snapshot (includes hands)
+                if (gameState.round_end_state && Array.isArray(gameState.rounds_history) && gameState.rounds_history.length > 0) {
+                    const h = gameState.rounds_history[0];
+                    const bid = h.last_bid || null;
+                    const bidQty = bid ? bid[0] : null;
+                    const bidFace = bid ? bid[1] : null;
+                    const onesAreWildForRound = h.round_ones_are_wild === true;
+                    const lastActionText = h.last_action ? (h.last_action.type === 'exact' ? 'Exact' : 'Call') + ' by ' + (h.last_action.player_name || '') : '';
+                    const handsHtml = (h.all_hands ? gameState.players.map((player, pIdx) => {
+                        const diceHtml = (h.all_hands[pIdx] || []).map(die => {
+                            const highlight = bidFace && (die == bidFace || (onesAreWildForRound && die == 1 && bidFace != 1));
+                            return `<div class="tiny-die${highlight ? ' highlighted' : ''}">${die}</div>`;
+                        }).join('');
+                        return `
+                            <div class="entry">
+                                <div class="who">${player.name}${pIdx === h.loser ? ' (Lost die)' : ''}</div>
+                                <div class="what"><div class="tiny-dice">${diceHtml}</div></div>
+                            </div>
+                        `;
+                    }).join('') : '');
+                    return `
+                        <div class="inline-history">
+                            <h4>Round summary${h.round_maputa_active ? ' • MAPUTA' : ''}</h4>
+                            ${bid ? `<div class="meta">Bid: ${bidQty} × ${bidFace}${h.actual_count != null ? ` • Actual: ${h.actual_count}` : ''}</div>` : ''}
+                            ${lastActionText ? `<div class="meta">Last action: ${lastActionText}</div>` : ''}
+                            ${handsHtml}
+                        </div>
+                    `;
+                }
+
+                // Otherwise, show live current round history
+                const hist = Array.isArray(gameState.round_history) ? gameState.round_history : [];
+                if (!hist.length) return '';
+                const entries = hist.map(e => {
+                    const who = e.player || '';
+                    const what = e.action || '';
+                    return `<div class="entry"><div class="who">${who}</div><div class="what">${what}</div></div>`;
+                }).join('');
+                return `<div class="inline-history"><h4>Current round</h4>${entries}</div>`;
+            } catch (err) {
+                return '';
+            }
+        }
 
         function displayNormalGameState() {
             // Modified version of existing displayNormalGameState function
@@ -926,25 +1013,29 @@
                     <div class="current-bid">
                         <h3>Your Dice</h3>
                         <div class="dice-display">
-                            ${gameState.your_dice.map(die => `<div class="die">${die}</div>`).join('')}
+                            ${gameState.your_dice.map(die => `<div class=\"die\">${die}</div>`).join('')}
                         </div>
                     </div>
                 `;
+                // Round history is displayed in the right sidebar; no inline history under your dice
 
                 // Current bid
                 if (gameState.current_bid) {
                     // Add MAPUTA indicator if MAPUTA is active
                     const maputaIndicator = gameState.maputa_active ? '<span class="maputa-indicator">MAPUTA</span>' : '';
+                    const diceInPlay = (typeof gameState.total_dice_in_play === 'number') ? gameState.total_dice_in_play : (gameState.players || []).reduce((s,p)=>s+(p.dice_count||0),0);
                     
                     mainHtml += `
                         <div class="current-bid">
                             <h3>Current Bid</h3>
                             <p>${gameState.current_bid.quantity} × ${gameState.current_bid.face}${maputaIndicator}</p>
+                            <div class="dice-counter">Dice in play: <strong>${diceInPlay}</strong></div>
                         </div>
                     `;
                 } else {
                     // Show MAPUTA indicator even when no bid yet if MAPUTA is active
                     const maputaIndicator = gameState.maputa_active ? '<span class="maputa-indicator">MAPUTA</span>' : '';
+                    const diceInPlay = (typeof gameState.total_dice_in_play === 'number') ? gameState.total_dice_in_play : (gameState.players || []).reduce((s,p)=>s+(p.dice_count||0),0);
                     
                     mainHtml += `
                         <div class="current-bid">
@@ -959,8 +1050,8 @@
                     <div class="players-status">
                         <h3>Players</h3>
                         ${gameState.players.map((player, index) => `
-                            <div class="player ${index === gameState.current_player ? 'current' : ''} ${player.is_ai ? 'ai' : ''}">
-                                <span>${player.name} ${player.is_ai ? '(AI)' : ''}</span>
+                            <div class="player ${index === gameState.current_player ? 'current' : ''} ${player.is_ai ? 'ai' : ''} ${player.alive ? '' : 'dead'}">
+                                <span>${player.name}${player.alive ? '' : ' 💀'} ${player.is_ai ? '(AI)' : ''}${player.last_action ? ' — ' + player.last_action : ''}</span>
                                 <span>Dice: ${player.dice_count}</span>
                             </div>
                         `).join('')}
@@ -1155,8 +1246,8 @@
                     <div class="all-hands-display">
                         <h3>All Player Hands</h3>
                         ${gameState.players.map((player, index) => `
-                            <div class="player-hand-display ${index === roundInfo.loser ? 'loser' : ''}">
-                                <div class="player-hand-name">
+                            <div class="player-hand-display ${index === roundInfo.loser ? 'loser' : ''}" style="display:grid; grid-template-columns: 240px 1fr; column-gap: 16px; align-items:start;">
+                                <div class="player-hand-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                     ${player.name}${index === roundInfo.loser ? ' (Lost die)' : ''}
                                 </div>
                                 <div class="player-hand-dice">
@@ -1164,8 +1255,9 @@
                                         // Highlight dice that match the last bid value
                                         // During MAPUTA, ones are not wild - only highlight direct matches
                                         const bidFace = roundInfo.last_bid ? roundInfo.last_bid[1] : null;
-                                        const isMaputa = gameState.maputa_active || false;
-                                        const shouldHighlight = bidFace && ((die == bidFace) || (!isMaputa && die == 1 && bidFace != 1));
+                                        // Use last round's ones-are-wild flag to avoid off-by-one with MAPUTA
+                                        const onesAreWildForRound = roundInfo.round_ones_are_wild === true;
+                                        const shouldHighlight = bidFace && ((die == bidFace) || (onesAreWildForRound && die == 1 && bidFace != 1));
                                         const highlightClass = shouldHighlight ? ' highlighted' : '';
                                         return `<div class="hand-die${highlightClass}">${die}</div>`;
                                     }).join('') : ''}
@@ -1194,6 +1286,7 @@
                         <div class="actual-count">
                             Actual count of ${bidFace}s: ${actualCount}
                         </div>
+                        ${roundInfo.last_action ? `<div class="last-action">Last action: ${roundInfo.last_action.type === 'exact' ? 'Exact' : 'Call'} by ${roundInfo.last_action.player_name}</div>` : ''}
                     </div>
                 `;
             }

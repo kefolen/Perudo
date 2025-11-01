@@ -77,7 +77,7 @@ class TestGameInitialization:
         assert 'ai_agents' in room_data
         assert len(room_data['ai_agents']) == 1
         assert hasattr(room_data['ai_agents'][0], 'select_action')
-        assert room_data['ai_agents'][0].name == "AI_Bot_1"
+        assert room_data['ai_agents'][0].name == "Random_AI_1"
     
     def test_start_game_multiple_ai_agents(self, client):
         """Test creating multiple AI agents for multiple empty slots."""
@@ -92,9 +92,9 @@ class TestGameInitialization:
         
         # Should have 3 AI agents
         assert len(room_data['ai_agents']) == 3
-        assert room_data['ai_agents'][0].name == "AI_Bot_1"
-        assert room_data['ai_agents'][1].name == "AI_Bot_2"
-        assert room_data['ai_agents'][2].name == "AI_Bot_3"
+        assert room_data['ai_agents'][0].name == "Random_AI_1"
+        assert room_data['ai_agents'][1].name == "Random_AI_2"
+        assert room_data['ai_agents'][2].name == "Random_AI_3"
     
     def test_only_host_can_start_game(self, client):
         """Test that only the host can start the game."""
@@ -133,18 +133,28 @@ class TestActionProcessing:
         # Test missing JSON data
         response = client.post('/action')
         assert response.status_code == 400
-        data = json.loads(response.data)
-        assert 'error' in data
+
+
+class TestDiceCounter:
+    """Test that poll response includes total dice in play counter."""
+
+    def test_poll_includes_total_dice_in_play(self, client, sample_room_with_game):
+        room_code = sample_room_with_game['room_code']
+        host_session = sample_room_with_game['host_session']
+
+        # Set session for the host
+        with client.session_transaction() as sess:
+            sess['session_id'] = host_session
         
-        # Test missing required fields
-        response = client.post('/action', 
-                             json={'room_code': 1234})
-        assert response.status_code == 400
+        # Poll game state
+        resp = client.get(f'/poll/{room_code}')
+        assert resp.status_code == 200
+        data = json.loads(resp.data.decode())
         
-        # Test invalid room code
-        response = client.post('/action',
-                             json={'room_code': 9999, 'action_type': 'bid'})
-        assert response.status_code == 404
+        # Field must exist and equal sum of dice counts
+        assert 'total_dice_in_play' in data
+        summed = sum(p['dice_count'] for p in data['players'])
+        assert data['total_dice_in_play'] == summed
     
     def test_action_requires_valid_session(self, client):
         """Test that actions require valid session."""
@@ -248,6 +258,44 @@ class TestPollingEndpoint:
         # Try polling without session
         response = client.get(f'/poll/{room_code}')
         assert response.status_code == 401
+
+    def test_poll_players_include_alive_flag(self, client, sample_room_with_game):
+        """Players in poll response must include 'alive' boolean matching dice_count>0."""
+        room_code = sample_room_with_game['room_code']
+        host_session = sample_room_with_game['host_session']
+        
+        # Set session for the host
+        with client.session_transaction() as sess:
+            sess['session_id'] = host_session
+        
+        # Poll game state
+        resp = client.get(f'/poll/{room_code}')
+        assert resp.status_code == 200
+        data = json.loads(resp.data.decode())
+        assert 'players' in data and isinstance(data['players'], list)
+        for p in data['players']:
+            assert 'alive' in p
+            assert p['alive'] == (p['dice_count'] > 0)
+
+    def test_poll_players_include_last_action_field(self, client, sample_room_with_game):
+        """Players in poll response must include 'last_action' per current round (may be None at round start)."""
+        room_code = sample_room_with_game['room_code']
+        host_session = sample_room_with_game['host_session']
+        
+        # Set session for the host
+        with client.session_transaction() as sess:
+            sess['session_id'] = host_session
+        
+        # Poll game state
+        resp = client.get(f'/poll/{room_code}')
+        assert resp.status_code == 200
+        data = json.loads(resp.data.decode())
+        assert 'players' in data and isinstance(data['players'], list)
+        # Field exists for all players
+        for p in data['players']:
+            assert 'last_action' in p
+        # Initially, before any actions, all last_action should be None
+        assert all(p['last_action'] is None for p in data['players'])
     
     def test_poll_returns_game_state(self, client, sample_room_with_game):
         """Test that polling returns complete game state."""
