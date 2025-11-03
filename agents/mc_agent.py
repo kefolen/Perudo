@@ -190,7 +190,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
         current_bid = obs['current_bid']
         cand = sim.legal_actions({'dice_counts': obs['dice_counts']}, current_bid, obs.get('maputa_restrict_face'))
         if current_bid is None:
-            cand = [a for a in cand if a[0] != 'call']
+            cand = [a for a in cand if (a[0] != 'call' and a[0] != 'exact')]
 
         # Fast prior: compute binomial plausibility for each bid and sort
         bids = []

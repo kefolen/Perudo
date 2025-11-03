@@ -31,13 +31,13 @@
     "chunk_size": 16,
     "early_stop_margin": 0.05,
     "weighted_sampling": true,
-    "enable_parallel": true,
+    "enable_parallel": false,
     "num_workers": null,
     "enhanced_pruning": true,
     "variance_reduction": true,
     "betting_history_enabled": true,
     "player_trust_enabled": true,
     "trust_learning_rate": 0.4,
-    "history_memory_rounds": 20,
+    "history_memory_rounds": 10,
     "bayesian_sampling": true
 }
