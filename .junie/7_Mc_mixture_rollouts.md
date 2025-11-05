@@ -43,6 +43,10 @@ Parallelism
 - Choose the policy at the worker before each rollout using a stateless RNG seeded per rollout to maintain reproducibility across workers.
 - Aggregate per-policy return statistics centrally if adaptive weighting is enabled.
 
+Backward compatibility
+- With mixture.enabled = false, behavior is identical to the current single-policy baseline.
+- With mixture.enabled = true and mixture.policies = ["baseline"] (weights = [1.0]), results match the baseline as well.
+
 2) Confidence-based early stopping (replace fixed margin)
 
 Goal
@@ -53,7 +57,7 @@ Design
   - Maintain for each candidate action a: count n_a, mean μ_a, unbiased variance estimate s2_a.
   - Confidence radius β_a(n) = sqrt(2 s2_a ln(3/δ) / n_a) + 3b ln(3/δ)/n_a
     - δ: failure probability (e.g., 0.05)
-    - b: bounded range of returns; if returns are clipped to [−1, 1], b = 1.
+    - b: bounded range of returns. In this codebase returns are win probabilities in [0, 1], so use b = 1.
 - Stopping rule
   - Let a* = argmax_a μ_a.
   - If μ_{a*} − β_{a*} > max_{a≠a*} (μ_a + β_a), stop and select a*.
@@ -63,7 +67,8 @@ Design
   - Batch rollouts per action to fit vectorized/parallel execution.
 
 Return normalization
-- If rollout returns are not naturally in [−1, 1], apply clipping or standardization (keep it consistent across actions) to keep b small and intervals tight.
+- Rollout returns in this codebase are terminal win probabilities in [0, 1]. Use b = 1 for Empirical-Bernstein bounds; no clipping is required.
+- If you experiment with alternate rewards, keep scaling consistent across actions and document any transformation.
 
 Edge cases and guards
 - Minimum initial samples per action: n_min_init (e.g., 5–10) before applying early stopping.
@@ -93,8 +98,8 @@ Model
 - Total dice in play: N. Player’s known dice: x_f of face f, x_1 of ones.
 - Unknown dice among others: M = N − own_dice_count.
 - Probability p that an unknown die contributes to count:
-  - If f ≠ 1: p = 1/6 (face f) + 1/6 (ones are wild) = 1/3.
-  - If f = 1: p = 1/6 (ones only).
+  - If f ≠ 1 and ones are wild and not in maputa: p = 1/6 (face f) + 1/6 (ones) = 1/3.
+  - Otherwise (face is 1, or ones not wild due to maputa): p = 1/6.
 - Required successes from unknown dice:
   - If f ≠ 1: r = max(0, q − (x_f + x_1)).
   - If f = 1: r = max(0, q − x_1).
@@ -105,16 +110,15 @@ Evaluation
 - Immediate expected utility of calling:
   - If the bid is true, caller loses a die (−1); if false, bidder loses a die (+1).
   - E[Δdice] = (+1)·(1 − P_true) + (−1)·P_true = 1 − 2·P_true.
-- Integration options:
-  1) One-step analytic leaf (fastest, lowest variance):
-     - Use E[Δdice] as the rollout return for the “call” action directly.
-  2) Hybrid branching (slightly higher cost, still low variance):
+- Integration options (recommended first):
+  1) Hybrid branching (semantics-preserving, low variance):
      - Evaluate two successor branches deterministically with weights:
        - With prob P_true: next state where caller loses a die.
        - With prob 1 − P_true: next state where bidder loses a die.
-     - Either:
-       - Stop at depth 1 using a static value function for these states, or
-       - Continue MC rollouts from each successor weighted by these probabilities.
+     - Continue MC rollouts from each successor weighted by these probabilities. This preserves the existing value semantics (terminal win probability in [0,1]).
+  2) One-step analytic leaf (experimental, fastest):
+     - Use E[Δdice] as the rollout return for the “call” action directly.
+     - Note: this changes the reward scale away from terminal win probability; only use if all competing actions use the same scaled reward, and document the change.
 
 Performance considerations
 - Precompute or cache binomial CDFs for given (M, p, r) to avoid repeated summation.
@@ -182,7 +186,7 @@ def analytic_call_reward(state, call_action, cfg):
     r = max(0, q - (x_f + (x_1 if f != 1 else 0)))
 
     P_true = binomial_tail(M, p, r, cfg)
-    # Option 1: analytic leaf (default)
+    # Analytic leaf (experimental): returns E[Δdice] on a different scale than win prob
     return 1 - 2 * P_true
 ```
 
@@ -197,18 +201,19 @@ Telemetry and controls
   - Safeguards to fall back to current baseline behavior if instability is detected.
 
 Default parameter suggestions
-- mixture.enabled: true
-- mixture.weights (K=3 example): [0.5, 0.3, 0.2]
-- mixture.min_weight_floor: 0.05
-- confstop.enabled: true
+- mixture.enabled: false  # default off to preserve current behavior
+- mixture.policies: ["baseline"]
+- mixture.weights (K=1 example): [1.0]
+- mixture.min_weight_floor: 0.0
+- confstop.enabled: false  # default off; keep fixed-margin until LUCB passes tests
 - confstop.delta: 0.05
 - confstop.min_init: 8
 - confstop.batch_size: 16
 - confstop.max_total_rollouts: keep current global budget
-- call_eval.mode: analytic_leaf
+- call_eval.mode: rollout  # default rollout; consider 'hybrid' after parity tests
 - call_eval.cache_enabled: true
 - call_eval.large_M_approx: auto
-- Return clipping for confidence bounds: [-1, 1]
+- Confidence bound range b: 1.0  # returns in [0,1], no clipping needed
 
 Risk and mitigation
 - Mixture instability: enforce weight floors and optional temperature decay.
