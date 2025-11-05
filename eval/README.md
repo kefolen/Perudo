@@ -15,9 +15,12 @@ py -m pip install -r requirements.txt
 ```powershell
 py -m eval.cli sweep_mc_n --mc-grid 100,200 --seeds 1 --matches-per-seed 5 --name demo_sweep --jobs 0
 ```
-- 1v5 one-vs-many (both profiles) for a single mc_n:
+- 1v5 one-vs-many (both profiles): single mc_n or a grid
 ```powershell
+# Single mc_n
 py -m eval.cli one_vs_many --mc-n 100 --seeds 1 --matches-per-seed 5 --name demo_1v5 --jobs 0
+# Or sweep multiple mc_n values
+py -m eval.cli one_vs_many --mc-grid 100,200,400 --seeds 1 --matches-per-seed 5 --name demo_1v5_sweep --jobs 0
 ```
 
 Outputs are saved to: `eval/results/experiments/<name>/`

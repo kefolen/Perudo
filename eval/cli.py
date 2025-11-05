@@ -190,8 +190,14 @@ def cmd_sweep_mc_n(args: argparse.Namespace) -> int:
 def cmd_one_vs_many(args: argparse.Namespace) -> int:
     seeds = _parse_int_list(args.seeds) if isinstance(args.seeds, str) else DEFAULT_SEEDS
     matches_per_seed = int(args.matches_per_seed)
-    mc_n = int(args.mc_n)
     baseline_profiles = ["aggressive", "passive"]
+
+    # Resolve mc grid
+    if getattr(args, "mc_grid", None):
+        grid = _parse_int_list(args.mc_grid)
+    else:
+        mc_n = int(args.mc_n)
+        grid = [mc_n]
 
     # Resolve jobs -> max_workers (0 means auto)
     jobs = int(args.jobs)
@@ -201,12 +207,22 @@ def cmd_one_vs_many(args: argparse.Namespace) -> int:
     max_workers = jobs if jobs > 1 else None
 
     conditions = [
-        ExperimentCondition(mc_n=mc_n, baseline_profile=prof, layout="1v5", player_count=6)
-        for prof in baseline_profiles
+        ExperimentCondition(mc_n=n, baseline_profile=prof, layout="1v5", player_count=6)
+        for n in grid for prof in baseline_profiles
     ]
 
+    # Auto name
+    auto_name: Optional[str]
+    if args.name:
+        auto_name = args.name
+    else:
+        if len(grid) == 1:
+            auto_name = f"one_vs_many_mc{grid[0]}"
+        else:
+            auto_name = "one_vs_many_sweep"
+
     cfg = ExperimentConfig(
-        name=args.name or f"one_vs_many_mc{mc_n}",
+        name=auto_name,
         seeds=seeds,
         num_matches_per_seed=matches_per_seed,
         conditions=conditions,
@@ -235,7 +251,9 @@ def cmd_one_vs_many(args: argparse.Namespace) -> int:
         "name": cfg.name,
         "layout": "1v5",
         "baseline_profiles": baseline_profiles,
-        "mc_n": mc_n,
+        "mc_grid": grid,
+        # keep mc_n for backward compatibility when single value
+        "mc_n": grid[0] if len(grid) == 1 else None,
         "seeds": seeds,
         "num_matches_per_seed": matches_per_seed,
         "aggregates": aggr,
@@ -270,8 +288,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_sweep.set_defaults(func=cmd_sweep_mc_n)
 
     # one_vs_many
-    p_one = sub.add_parser("one_vs_many", help="Run 1v5 for a single mc_n against both profiles")
-    p_one.add_argument("--mc-n", type=int, default=100, help="Monte Carlo simulations per decision")
+    p_one = sub.add_parser("one_vs_many", help="Run 1v5 for one or more mc_n values against both profiles")
+    p_one.add_argument("--mc-n", type=int, default=100, help="Monte Carlo simulations per decision (used if --mc-grid not provided)")
+    p_one.add_argument("--mc-grid", default=",".join(str(x) for x in DEFAULT_MC_GRID), help="Comma-separated mc_n values (overrides --mc-n if provided)")
     p_one.add_argument("--seeds", default=",".join(str(s) for s in DEFAULT_SEEDS), help="Comma-separated seeds")
     p_one.add_argument("--matches-per-seed", type=int, default=DEFAULT_MATCHES_PER_SEED)
     p_one.add_argument("--out", default=None, help="Output directory (defaults to eval/results/experiments/<name>)")
