@@ -70,9 +70,12 @@ class InteractivePerudoGame:
         # State change listeners for real-time updates
         self.state_listeners = []  # List of callback functions for state changes
         
+        # Track previous round's loser to apply Maputa correctly
+        self.prev_round_loser = None
+        
         # Start new round
         self._start_new_round()
-    
+        
     def _start_new_round(self):
         """Start a new round with fresh dice rolls."""
         if self.is_game_over():
@@ -105,9 +108,15 @@ class InteractivePerudoGame:
                 # Fallback: use first alive player
                 self.current_player = alive_players[0]
         
-        # Check for maputa (single die rule)
-        self.maputa_active = (self.simulator.use_maputa and 
-                             self.state['dice_counts'][self.current_player] == 1)
+        # Check for maputa (single die rule) — must be the previous round’s loser and still alive
+        self.maputa_active = (
+            self.simulator.use_maputa and
+            getattr(self, 'prev_round_loser', None) is not None and
+            self.current_player == self.prev_round_loser and
+            self.state['dice_counts'][self.current_player] == 1
+        )
+        # This flag is only for the immediate next round after a loss
+        self.prev_round_loser = None
         self.maputa_restrict_face = None
         self.current_bid = None
         self.current_bid_maker = None
@@ -340,6 +349,9 @@ class InteractivePerudoGame:
         
         # Remove a die from loser
         self.state['dice_counts'][loser] = max(0, self.state['dice_counts'][loser] - 1)
+        
+        # Track previous round loser only if still alive (needed for correct Maputa rule)
+        self.prev_round_loser = loser if self.state['dice_counts'][loser] > 0 else None
         
         # Check if game is over
         alive_players = [i for i, c in enumerate(self.state['dice_counts']) if c > 0]

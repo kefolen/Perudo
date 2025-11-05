@@ -10,5 +10,5 @@ pytest
 pytest-cov
 pre-commit
 
-# optional (if you implement NN improvements)
-# torch
+# graphs
+matplotlib

@@ -27,7 +27,7 @@
     },
     
     "name": "MC_Agent",
-    "n": 2000,
+    "n": 4000,
     "chunk_size": 16,
     "early_stop_margin": 0.05,
     "weighted_sampling": true,
