@@ -213,3 +213,5 @@ __marimo__/
 
 .idea/*
 
+#A lot of unnesecery experimental data
+eval/results
