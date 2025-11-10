@@ -28,9 +28,9 @@ _ALLOWED_MC_KEYS = {
 def get_baseline_kwargs(profile_name: str) -> Dict:
     name = str(profile_name).lower()
     if name == "aggressive":
-        return {"threshold_call": 0.25}
+        return {"threshold_call": 0.3}
     if name == "passive":
-        return {"threshold_call": 0.55}
+        return {"threshold_call": 0.6}
     raise ValueError(f"Unknown baseline profile: {profile_name}")
 
 

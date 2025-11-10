@@ -56,7 +56,7 @@ def _make_progress(total: int, desc: str = "Running matches"):
         return _SimpleProgress(total, desc)
 
 
-DEFAULT_MC_GRID = [200, 400, 800, 1600, 3200]
+DEFAULT_MC_GRID = [100, 200, 300, 400, 500, 600]
 DEFAULT_SEEDS = [1, 2, 3]
 DEFAULT_MATCHES_PER_SEED = 30
 

@@ -49,19 +49,45 @@ class ParallelProcessingMixin:
 
     def _run_chunk_simulations(self, obs, action, chunk_size, seed_offset=0):
         """Worker function to run a chunk of simulations."""
+        # If analytical call evaluation is enabled and action is 'call', shortcut
+        if action[0] == 'call' and getattr(self, 'call_eval_mode', 'rollout') == 'analytic_leaf':
+            try:
+                val = self._analytic_call_value(obs)
+            except Exception:
+                val = 0.0
+            total = float(val) * float(chunk_size)
+            # For variance reduction path, replicate constant result if needed
+            individual_results = [val] * chunk_size if self.variance_reduction else None
+            return total, chunk_size, individual_results
+
         # Create local random generator with seed offset for reproducibility
         local_rng = random.Random(self.rng.getstate()[1][0] + seed_offset)
         
         total = 0.0
         individual_results = [] if self.variance_reduction else None
         
+        # Ensure mixture caches in worker if enabled
+        if getattr(self, 'mixture_enabled', False):
+            try:
+                sim = obs['_simulator']
+                self._ensure_rollout_agents_by_policy(sim)
+            except Exception:
+                pass
+        
         for _ in range(chunk_size):
-            # Use local RNG for determinization sampling
+            # Use local RNG for determinization sampling and policy sampling
             orig_rng = self.rng
             self.rng = local_rng
             try:
                 hands = self.sample_determinization(obs)
-                result = self.simulate_from_determinization(hands, obs, action)
+                rollout_agents = None
+                if getattr(self, 'mixture_enabled', False):
+                    try:
+                        pid = self._sample_policy_id(depth=0, rng=local_rng)
+                        rollout_agents = self._rollout_agents_by_policy.get(pid)
+                    except Exception:
+                        rollout_agents = None
+                result = self.simulate_from_determinization(hands, obs, action, rollout_agents=rollout_agents)
                 total += result
                 
                 # Store individual result for variance reduction if enabled

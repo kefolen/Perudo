@@ -6,7 +6,7 @@
             "name": "Display name for the agent",
             "n": "Number of Monte Carlo simulations to run per action evaluation",
             "chunk_size": "Number of simulations to process in each batch (for performance optimization)",
-            "early_stop_margin": "Threshold for early stopping when an action is clearly inferior",
+            "early_stop_margin": "Threshold for early stopping when an action is clearly inferior (kept for legacy; LUCB provides a principled alternative)",
             "weighted_sampling": "Enable weighted dice sampling based on game patterns",
             "enable_parallel": "Enable parallel processing using multiple CPU cores",
             "num_workers": "Number of worker processes for parallel execution (null = auto-detect)",
@@ -16,13 +16,30 @@
             "player_trust_enabled": "Enable player trust tracking and learning",
             "trust_learning_rate": "Learning rate for updating player trust parameters",
             "history_memory_rounds": "Number of historical rounds to remember for analysis",
-            "bayesian_sampling": "Use Bayesian inference for more accurate dice sampling"
+            "bayesian_sampling": "Use Bayesian inference for more accurate dice sampling",
+
+            "call_eval_mode": "How to evaluate a 'call': 'rollout' (default), 'analytic_leaf' (fast, experimental), or 'hybrid' (future)",
+
+            "mixture_enabled": "Enable mixture of rollout policies (sample a policy per rollout)",
+            "mixture_policies": "List of rollout policy ids: ['baseline', 'baseline_conservative', 'baseline_aggressive', 'random']",
+            "mixture_weights": "List of weights corresponding to mixture_policies (will be normalized)",
+            "mixture_min_weight_floor": "Minimum floor weight to avoid zero-probability policies",
+            "mixture_depth_schedule": "Optional depth-dependent weights (object) — leave null to use static weights",
+
+            "confstop_enabled": "Enable LUCB confidence-based early stopping for action selection (sequential path)",
+            "confstop_delta": "Failure probability delta for Empirical-Bernstein bounds (e.g., 0.05)",
+            "confstop_min_init": "Minimum initial rollouts per action before racing",
+            "confstop_batch_size": "Number of rollouts to sample per LUCB iteration for selected actions",
+            "confstop_max_total_rollouts": "Optional cap on total rollouts during selection (null = unlimited)",
+            "confstop_max_per_action": "Optional cap on rollouts per action during selection (null = unlimited)",
+            "confstop_bound_b": "Bounded range parameter b for EB bounds (1.0 for probability returns)"
         },
         "performance_notes": {
             "n": "Higher values = better decisions but slower computation. 100-500 recommended for web play",
             "chunk_size": "8-16 works well for most systems. Larger values may improve performance on multi-core systems",
             "enable_parallel": "Recommended for multi-core systems when n > 200",
-            "num_workers": "Leave null to auto-detect CPU cores. Set manually only if needed"
+            "num_workers": "Leave null to auto-detect CPU cores. Set manually only if needed",
+            "confstop_enabled": "When true, the agent may use fewer simulations while selecting the same best action; tune delta/min_init/batch_size for stability"
         }
     },
     
@@ -39,5 +56,21 @@
     "player_trust_enabled": true,
     "trust_learning_rate": 0.4,
     "history_memory_rounds": 10,
-    "bayesian_sampling": true
+    "bayesian_sampling": true,
+
+    "call_eval_mode": "rollout",
+
+    "mixture_enabled": true,
+    "mixture_policies": ["baseline", "baseline_conservative", "baseline_aggressive"],
+    "mixture_weights": [0, 0, 1],
+    "mixture_min_weight_floor": 0.0,
+    "mixture_depth_schedule": null,
+
+    "confstop_enabled": true,
+    "confstop_delta": 0.05,
+    "confstop_min_init": 8,
+    "confstop_batch_size": 16,
+    "confstop_max_total_rollouts": null,
+    "confstop_max_per_action": null,
+    "confstop_bound_b": 1.0
 }

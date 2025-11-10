@@ -3,6 +3,7 @@ import math
 import multiprocessing as mp
 from sim.perudo import Action, binom_cdf_ge_fast
 from agents.baseline_agent import BaselineAgent
+from agents.random_agent import RandomAgent
 from agents.mc_utils import (
     sample_weighted_dice, compute_enhanced_action_score,
     compute_control_variate_baseline, apply_variance_reduction,
@@ -35,7 +36,13 @@ class MonteCarloAgent(ParallelProcessingMixin):
                  enable_parallel=False, num_workers=None, enhanced_pruning=False,
                  variance_reduction=False, betting_history_enabled=False,
                  player_trust_enabled=False, trust_learning_rate=0.1,
-                 history_memory_rounds=10, bayesian_sampling=False):
+                 history_memory_rounds=10, bayesian_sampling=False,
+                 call_eval_mode='rollout',
+                 mixture_enabled=False, mixture_policies=None, mixture_weights=None,
+                 mixture_min_weight_floor=0.0, mixture_depth_schedule=None,
+                 confstop_enabled=False, confstop_delta=0.05, confstop_min_init=8,
+                 confstop_batch_size=16, confstop_max_total_rollouts=None,
+                 confstop_max_per_action=None, confstop_bound_b=1.0):
         self.name = name
         self.N = max(1, int(n))
         self.rng = rng or random.Random()
@@ -57,10 +64,157 @@ class MonteCarloAgent(ParallelProcessingMixin):
         
         # Initialize parallel processing parameters using mixin
         self._initialize_parallel_parameters(enable_parallel, num_workers)
+        # Analytical call evaluation mode: 'rollout' (default), 'analytic_leaf' or 'hybrid' (future)
+        self.call_eval_mode = call_eval_mode
+
+        # --- Mixture rollout configuration (Milestone 2) ---
+        self.mixture_enabled = bool(mixture_enabled)
+        # Policies list
+        self.mixture_policies = list(mixture_policies) if mixture_policies is not None else ['baseline']
+        # Normalize and floor weights
+        self.mixture_min_weight_floor = float(mixture_min_weight_floor)
+        self.mixture_depth_schedule = mixture_depth_schedule  # optional dict with thresholds/weights
+        self.mixture_weights = self._normalize_with_floor(
+            mixture_weights if mixture_weights is not None else [1.0] * len(self.mixture_policies),
+            self.mixture_policies,
+            self.mixture_min_weight_floor,
+        )
+        # Cached per-policy per-player rollout agents
+        self._rollout_agents_by_policy = None
+
+        # --- Confidence-based early stopping (Milestone 3) config ---
+        self.confstop_enabled = bool(confstop_enabled)
+        self.confstop_delta = float(confstop_delta)
+        self.confstop_min_init = int(confstop_min_init)
+        self.confstop_batch_size = int(confstop_batch_size)
+        self.confstop_max_total_rollouts = None if confstop_max_total_rollouts is None else int(confstop_max_total_rollouts)
+        self.confstop_max_per_action = None if confstop_max_per_action is None else int(confstop_max_per_action)
+        self.confstop_bound_b = float(confstop_bound_b)
 
     def __del__(self):
         """Cleanup worker pool when agent is destroyed."""
         self._close_worker_pool()
+
+    # --- Analytical call evaluation helpers (Milestone 1) ---
+    def _compute_call_truth_probability(self, obs):
+        """Compute P_true that the current bid is true given observation.
+        Uses fast binomial tail lookup. Respects ones-are-wild and maputa rules.
+        """
+        sim = obs['_simulator']
+        current_bid = obs.get('current_bid')
+        if current_bid is None:
+            return 0.0
+        qty, face = current_bid
+        my_hand = obs['my_hand']
+        total_dice = sum(obs['dice_counts'])
+        unknown = total_dice - len(my_hand)
+        # own counts
+        x_f = sum(1 for d in my_hand if d == face)
+        x_1 = sum(1 for d in my_hand if d == 1)
+        ones_wild_effective = sim.ones_are_wild and not obs.get('maputa_active', False)
+        if face != 1 and ones_wild_effective:
+            p = 1/3
+            need = max(0, qty - (x_f + x_1))
+        else:
+            p = 1/6
+            if face == 1:
+                need = max(0, qty - x_1)
+            else:
+                need = max(0, qty - x_f)
+        return binom_cdf_ge_fast(unknown, need, p) if unknown >= 0 else 0.0
+
+    def _analytic_call_value(self, obs):
+        """Return E[Δdice] = 1 - 2*P_true for calling current bid.
+        Note: This value is on a different scale than terminal win probability.
+        """
+        P_true = self._compute_call_truth_probability(obs)
+        return 1.0 - 2.0 * P_true
+
+    class ActionStats:
+        def __init__(self):
+            self.n = 0
+            self.mean = 0.0
+            self.M2 = 0.0  # Sum of squares of differences from the current mean
+        def update(self, x):
+            self.n += 1
+            delta = x - self.mean
+            self.mean += delta / self.n
+            delta2 = x - self.mean
+            self.M2 += delta * delta2
+        @property
+        def var_unbiased(self):
+            return self.M2 / (self.n - 1) if self.n > 1 else 0.0
+        def radius(self, delta, b):
+            if self.n <= 0:
+                return float('inf')
+            s2 = self.var_unbiased
+            # Empirical-Bernstein radius
+            term1 = math.sqrt(max(0.0, 2.0 * s2 * math.log(3.0 / max(1e-12, delta)) / self.n))
+            term2 = 3.0 * b * math.log(3.0 / max(1e-12, delta)) / max(1, self.n - 1 + 1)
+            # The denominator for term2 often uses n-1 or n; we keep n for stability
+            term2 = 3.0 * b * math.log(3.0 / max(1e-12, delta)) / self.n
+            return term1 + term2
+
+    def _eb_radius(self, n, var_unbiased, delta=None, b=None):
+        """Helper to compute Empirical-Bernstein radius given stats."""
+        if n <= 0:
+            return float('inf')
+        if delta is None:
+            delta = self.confstop_delta
+        if b is None:
+            b = self.confstop_bound_b
+        term1 = math.sqrt(max(0.0, 2.0 * var_unbiased * math.log(3.0 / max(1e-12, delta)) / n))
+        term2 = 3.0 * b * math.log(3.0 / max(1e-12, delta)) / n
+        return term1 + term2
+
+    def _normalize_with_floor(self, weights, policies, floor):
+        # Ensure length matches
+        if weights is None or len(weights) != len(policies):
+            weights = [1.0] * len(policies)
+        # Apply floor and renormalize
+        w = [max(float(floor), float(x)) for x in weights]
+        s = sum(w)
+        if s <= 0:
+            w = [1.0 / len(w)] * len(w)
+        else:
+            w = [x / s for x in w]
+        return w
+
+    def _policy_factory(self, policy_id):
+        pid = str(policy_id).lower()
+        if pid == 'baseline':
+            return lambda name: BaselineAgent(name=name)
+        if pid == 'baseline_conservative':
+            return lambda name: BaselineAgent(name=name, threshold_call=0.7)
+        if pid == 'baseline_aggressive':
+            return lambda name: BaselineAgent(name=name, threshold_call=0.3)
+        if pid == 'random':
+            # Seeded random agent is not necessary for rollouts; keep simple
+            return lambda name: RandomAgent(name=name)
+        # default fallback
+        return lambda name: BaselineAgent(name=name)
+
+    def _ensure_rollout_agents_by_policy(self, sim):
+        if self._rollout_agents_by_policy is None:
+            self._rollout_agents_by_policy = {}
+            for pid in self.mixture_policies:
+                factory = self._policy_factory(pid)
+                self._rollout_agents_by_policy[pid] = [factory(name=f"{pid}_{i}") for i in range(sim.num_players)]
+
+    def _get_depth_weights(self, depth):
+        # Depth schedule optional; default to static weights
+        return self.mixture_weights
+
+    def _sample_policy_id(self, depth=0, rng=None):
+        rng = rng or self.rng
+        if not self.mixture_enabled:
+            return 'baseline'
+        # If only one policy, avoid consuming RNG to preserve stream parity
+        if len(self.mixture_policies) == 1:
+            return self.mixture_policies[0]
+        weights = self._get_depth_weights(depth)
+        # Python's random.choices
+        return rng.choices(self.mixture_policies, weights=weights, k=1)[0]
 
     # sample determinization (fast)
     def sample_determinization(self, obs):
@@ -101,6 +255,9 @@ class MonteCarloAgent(ParallelProcessingMixin):
         sim = obs['_simulator']
         if self._rollout_agents is None or len(self._rollout_agents) != sim.num_players:
             self._rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
+        # Ensure mixture caches if enabled
+        if self.mixture_enabled:
+            self._ensure_rollout_agents_by_policy(sim)
         
         if self.enable_parallel and self.num_workers > 1:
             return self._evaluate_action_parallel(obs, action, best_so_far)
@@ -133,8 +290,16 @@ class MonteCarloAgent(ParallelProcessingMixin):
             best_mean = best_so_far
 
         def run_one_sim():
+            # Milestone 1: analytical evaluation for 'call' action (experimental)
+            if action[0] == 'call' and getattr(self, 'call_eval_mode', 'rollout') == 'analytic_leaf':
+                return self._analytic_call_value(obs)
             hands = self.sample_determinization(obs)
-            return self.simulate_from_determinization(hands, obs, action)
+            rollout_agents = None
+            if self.mixture_enabled:
+                # Sample a policy id for this rollout (static mixture)
+                pid = self._sample_policy_id(depth=0, rng=self.rng)
+                rollout_agents = self._rollout_agents_by_policy.get(pid)
+            return self.simulate_from_determinization(hands, obs, action, rollout_agents=rollout_agents)
 
         # run full chunks
         for _ in range(full_chunks):
@@ -181,6 +346,114 @@ class MonteCarloAgent(ParallelProcessingMixin):
         else:
             return total / runs_done
 
+    def _run_single_rollout_value(self, obs, action):
+        """Run a single rollout for the given action and return its value.
+        Respects analytic call mode and mixture rollout settings.
+        """
+        # Analytical short-circuit for 'call' analytic_leaf mode
+        if action[0] == 'call' and getattr(self, 'call_eval_mode', 'rollout') == 'analytic_leaf':
+            return self._analytic_call_value(obs)
+        hands = self.sample_determinization(obs)
+        rollout_agents = None
+        if getattr(self, 'mixture_enabled', False):
+            pid = self._sample_policy_id(depth=0, rng=self.rng)
+            rollout_agents = None if self._rollout_agents_by_policy is None else self._rollout_agents_by_policy.get(pid)
+        return self.simulate_from_determinization(hands, obs, action, rollout_agents=rollout_agents)
+
+    def _run_k_rollouts_for_action(self, obs, action, k):
+        results = []
+        for _ in range(k):
+            results.append(self._run_single_rollout_value(obs, action))
+        return results
+
+    def _select_action_confstop(self, obs, cand_actions):
+        """Empirical-Bernstein LUCB best-arm identification among cand_actions.
+        Returns the selected action.
+        """
+        if not cand_actions:
+            return None
+        if len(cand_actions) == 1:
+            return cand_actions[0]
+
+        # Ensure rollout agents initialized (baseline and mixture caches)
+        sim = obs.get('_simulator')
+        if self._rollout_agents is None and sim is not None:
+            self._rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
+        if getattr(self, 'mixture_enabled', False) and sim is not None:
+            self._ensure_rollout_agents_by_policy(sim)
+
+        # Stats per action
+        stats = {a: MonteCarloAgent.ActionStats() for a in cand_actions}
+        total_budget = self.confstop_max_total_rollouts if self.confstop_max_total_rollouts is not None else float('inf')
+        per_action_cap = self.confstop_max_per_action if self.confstop_max_per_action is not None else float('inf')
+        batch = max(1, int(self.confstop_batch_size))
+        min_init = max(1, int(self.confstop_min_init))
+        delta = float(self.confstop_delta)
+        b = float(self.confstop_bound_b)
+
+        total_used = 0
+        used_per_action = {a: 0 for a in cand_actions}
+
+        # Warm start: min_init per action
+        for a in cand_actions:
+            k = min(min_init, int(per_action_cap - used_per_action[a]), int(total_budget - total_used))
+            if k <= 0:
+                continue
+            vals = self._run_k_rollouts_for_action(obs, a, k)
+            total_used += k
+            used_per_action[a] += k
+            for v in vals:
+                stats[a].update(v)
+
+        # Main LUCB loop
+        while total_used < total_budget:
+            # Compute bounds
+            means = {a: stats[a].mean for a in cand_actions}
+            radii = {a: stats[a].radius(delta, b) for a in cand_actions}
+            # Identify current best by mean
+            a_star = max(cand_actions, key=lambda a: means[a])
+            l_star = means[a_star] - radii[a_star]
+            # Challenger: highest UCB among others
+            challenger = None
+            max_ucb = -float('inf')
+            for a in cand_actions:
+                if a == a_star:
+                    continue
+                u = means[a] + radii[a]
+                if u > max_ucb:
+                    max_ucb = u
+                    challenger = a
+            if challenger is None:
+                break
+            # Stopping condition: U(challenger) <= L(star)
+            if max_ucb <= l_star:
+                return a_star
+
+            # Determine pulls for star and challenger
+            def pulls_for(a):
+                rem_total = int(total_budget - total_used)
+                rem_action = int(per_action_cap - used_per_action[a])
+                return max(0, min(batch, rem_total, rem_action))
+
+            k1 = pulls_for(a_star)
+            k2 = pulls_for(challenger)
+            if k1 <= 0 and k2 <= 0:
+                break
+            if k1 > 0:
+                s1 = self._run_k_rollouts_for_action(obs, a_star, k1)
+                total_used += k1
+                used_per_action[a_star] += k1
+                for _ in range(k1):
+                    stats[a_star].update(s1 / k1)
+            if k2 > 0:
+                s2 = self._run_k_rollouts_for_action(obs, challenger, k2)
+                total_used += k2
+                used_per_action[challenger] += k2
+                for _ in range(k2):
+                    stats[challenger].update(s2 / k2)
+
+        # Fallback: choose best empirical mean
+        return max(cand_actions, key=lambda a: stats[a].mean)
 
     def select_action(self, obs, prune_k=12):
         """Top-level selection: optionally prune candidate actions (by simple prior),
@@ -233,6 +506,12 @@ class MonteCarloAgent(ParallelProcessingMixin):
         if self._rollout_agents is None or len(self._rollout_agents) != sim.num_players:
             self._rollout_agents = [self.rollout_policy_cls(name=f"roll_{i}") for i in range(sim.num_players)]
 
+        # If confidence-based early stopping is enabled, use LUCB controller
+        if getattr(self, 'confstop_enabled', False):
+            chosen = self._select_action_confstop(obs, cand_pruned)
+            if chosen is not None:
+                return chosen
+
         for a in cand_pruned:
             val = self.evaluate_action(obs, a, best_so_far=best_val)
             if val > best_val:
@@ -242,7 +521,7 @@ class MonteCarloAgent(ParallelProcessingMixin):
         # fallback
         return best_action if best_action is not None else random.choice(cand_pruned)
 
-    def simulate_from_determinization(self, full_hands, obs, first_action):
+    def simulate_from_determinization(self, full_hands, obs, first_action, rollout_agents=None):
         """
         Optimized simulate:
           - local variables for performance
@@ -334,7 +613,11 @@ class MonteCarloAgent(ParallelProcessingMixin):
                 'maputa_restrict_face': maputa_restrict_face,
                 '_simulator': sim
             }
-            a = self._rollout_agents[cur].select_action(obs_local)
+            # Choose rollout agent depending on mixture selection
+            if rollout_agents is not None:
+                a = rollout_agents[cur].select_action(obs_local)
+            else:
+                a = self._rollout_agents[cur].select_action(obs_local)
 
             # handle action
             if Action.is_bid(a):
