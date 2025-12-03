@@ -1,0 +1,88 @@
+{
+  "name": "sweep_low_end_v2",
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "num_matches_per_seed": 5,
+  "conditions": [
+    {
+      "mc_n": 100,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 100,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 200,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 200,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 300,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 300,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 400,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 400,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 500,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 500,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 600,
+      "baseline_profile": "aggressive",
+      "layout": "3v3",
+      "player_count": 6
+    },
+    {
+      "mc_n": 600,
+      "baseline_profile": "passive",
+      "layout": "3v3",
+      "player_count": 6
+    }
+  ],
+  "log_decisions": false,
+  "shuffle_seats": false,
+  "out_dir": null
+}

@@ -184,16 +184,8 @@ The project includes a **Flask-based web interface** that allows users to play P
 - `POST /action` - Submit game action
 - `GET /poll/<code>` - Poll current game state
 
-## Development Philosophy
 
-This project follows **Test-Driven Development (TDD)** principles:
-
-### TDD Approach
-- **Red-Green-Refactor**: Write failing tests first, implement minimal code to pass, then refactor
-- **Living Documentation**: Tests serve as executable specifications of expected behavior
-- **Quality Assurance**: Comprehensive test coverage ensures reliability and maintainability
-
-### Testing Framework
+## Testing Framework
 - **140+ comprehensive tests** covering unit, integration, performance, regression, and web interface testing
 - **Fast execution** to support frequent TDD cycles
 - **Core functionality focus** rather than exhaustive edge cases
@@ -215,45 +207,3 @@ python -m pytest tests/test_web_*.py -v  # Web interface tests
 python -m pytest --cov=. --cov-report=html tests/
 ```
 
-### Contributing
-All new features and changes must follow TDD principles:
-1. Write tests that define expected behavior
-2. Implement minimal code to make tests pass
-3. Refactor while maintaining test coverage
-
-### Pre-Commit Hooks
-This project uses pre-commit hooks to automatically run tests before each commit, ensuring code quality and preventing regressions:
-
-#### Setup Pre-Commit Hooks
-```bash
-# Install pre-commit (included in requirements.txt)
-pip install pre-commit
-
-# Install the hooks
-pre-commit install
-```
-
-#### How It Works
-- **Automatic Testing**: All 132 tests run automatically before each commit
-- **Commit Prevention**: If tests fail, the commit is blocked until issues are resolved
-- **TDD Enforcement**: Ensures all commits maintain the established quality standards
-
-#### Manual Testing
-```bash
-# Run pre-commit hooks manually on all files
-pre-commit run --all-files
-
-# Run tests directly using the test launcher
-python tests/tests_launcher.py
-```
-
-#### Bypassing Hooks (Use Sparingly)
-```bash
-# Skip pre-commit hooks for emergency commits
-git commit --no-verify -m "Emergency fix"
-```
-
-## Performance Notes
-
-- The Monte-Carlo agent is single-machine friendly; for speed, you can parallelize evaluate_action in mc_agent using multiprocessing.
-- The modular layout allows for plugging in ISMCTS, opponent modeling, or NN-based rollout policies.

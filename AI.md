@@ -2,15 +2,11 @@
 
 This document describes the AI tools used in the development of the Perudo project, what tasks they performed, and where to find their results in the repository.
 
-## Project Overview
-
-This is an experimental project that was made to test the capabilities of Junie - JetBrains coding agent. Most of the coding tasks were performed by Junie, with puny human developers only doing minor refactoring and careful prompting (which not as easy as it sounds).
+TL;DR: This is an experimental project that was made to test the capabilities of Junie. All the coding tasks performed by Junie, with a puny human developer only doing minor refactoring and careful prompting (which not as easy as it sounds).
 
 ## AI Tools Used
 
-### Junie (JetBrains Coding Agent)
-
-Junie is an AI coding assistant developed by JetBrains. It was the primary AI tool used in this project.
+Junie - JetBrains coding agent
 
 ## Tasks Performed by AI
 

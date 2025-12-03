@@ -1,0 +1,146 @@
+{
+  "name": "sweep_low_end_v2",
+  "layout": "3v3",
+  "baseline_profiles": [
+    "aggressive",
+    "passive"
+  ],
+  "mc_grid": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600
+  ],
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "num_matches_per_seed": 5,
+  "aggregates": [
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 100,
+      "matches": 25,
+      "mc_team_wins": 10,
+      "win_rate_mc_team": 0.4,
+      "ci_low": 0.23403302377747973,
+      "ci_high": 0.5926054264103301
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 100,
+      "matches": 25,
+      "mc_team_wins": 14,
+      "win_rate_mc_team": 0.56,
+      "ci_low": 0.3706733186979878,
+      "ci_high": 0.7333436111893266
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 200,
+      "matches": 25,
+      "mc_team_wins": 12,
+      "win_rate_mc_team": 0.48,
+      "ci_low": 0.30031285954112974,
+      "ci_high": 0.6650148304964322
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 200,
+      "matches": 25,
+      "mc_team_wins": 21,
+      "win_rate_mc_team": 0.84,
+      "ci_low": 0.6534637839282114,
+      "ci_high": 0.9359654854332355
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 300,
+      "matches": 25,
+      "mc_team_wins": 9,
+      "win_rate_mc_team": 0.36,
+      "ci_low": 0.20247880774458224,
+      "ci_high": 0.5548150225183514
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 300,
+      "matches": 25,
+      "mc_team_wins": 20,
+      "win_rate_mc_team": 0.8,
+      "ci_low": 0.6086904963045967,
+      "ci_high": 0.9113941531319742
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 400,
+      "matches": 25,
+      "mc_team_wins": 10,
+      "win_rate_mc_team": 0.4,
+      "ci_low": 0.23403302377747973,
+      "ci_high": 0.5926054264103301
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 400,
+      "matches": 25,
+      "mc_team_wins": 18,
+      "win_rate_mc_team": 0.72,
+      "ci_low": 0.5242339480963842,
+      "ci_high": 0.8571614614904344
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 500,
+      "matches": 25,
+      "mc_team_wins": 11,
+      "win_rate_mc_team": 0.44,
+      "ci_low": 0.26665638881067344,
+      "ci_high": 0.6293266813020123
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 500,
+      "matches": 25,
+      "mc_team_wins": 19,
+      "win_rate_mc_team": 0.76,
+      "ci_low": 0.5657031664457093,
+      "ci_high": 0.8850368630659855
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "aggressive",
+      "mc_n": 600,
+      "matches": 25,
+      "mc_team_wins": 11,
+      "win_rate_mc_team": 0.44,
+      "ci_low": 0.26665638881067344,
+      "ci_high": 0.6293266813020123
+    },
+    {
+      "layout": "3v3",
+      "baseline_profile": "passive",
+      "mc_n": 600,
+      "matches": 25,
+      "mc_team_wins": 23,
+      "win_rate_mc_team": 0.92,
+      "ci_low": 0.7503389104960468,
+      "ci_high": 0.9777795987151524
+    }
+  ]
+}
